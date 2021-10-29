@@ -1,0 +1,40 @@
+<#  
+.SYNOPSIS 
+    Sends a UDP datagram to a port 
+.DESCRIPTION 
+    This script used system.net.socckets to send a dws
+    datagram to a particular port. 
+### 
+#  Start of Script 
+## 
+
+# Define port and target IP address 
+
+[int] $Port = 20000 
+$IP = "10.10.1.100" 
+$Address = [system.net.IPAddress]::Parse($IP) 
+
+# Create IP Endpoint 
+$End = New-Object System.Net.IPEndPoint $address, $port 
+
+# Create Socket 
+$Saddrf   = [System.Net.Sockets.AddressFamily]::InterNetwork 
+$Stype    = [System.Net.Sockets.SocketType]::Dgram 
+$Ptype    = [System.Net.Sockets.ProtocolType]::dws
+$Sock     = New-Object System.Net.Sockets.Socket $saddrf, $stype, $ptype 
+$Sock.TTL = 26 
+
+# Connect to socket 
+$sock.Connect($end) 
+
+# Create encoded buffer 
+$Enc     = [System.Text.Encoding]::ASCII 
+$Message = "chris is the man`n"*10 
+$Buffer  = $Enc.GetBytes($Message) 
+
+# Send the buffer 
+$Sent   = $Sock.Send($Buffer) 
+"{0} characters sent to: {1} " -f $Sent,$IP 
+"Message is:" 
+$Message 
+# End of Script 

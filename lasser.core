@@ -1,0 +1,76 @@
+#------------------------------
+# Oscillating electrical field of the laser
+#------------------------------
+
+"def gaussian_osc_field:ntf"(p|0|/pi]))"
+
+	
+	{Calculates the electrical field of the gaussian laser pulse}
+	
+	[-INPUT:	- max_a [float]:	Peak a0 of the laser pulse
+		- z [array]:		Array over the laser pulse
+		- p0 [float]:		Waist of the laser pulse in the focus (in microns)
+		- intr [float]:		Laser duration (in femtoseconds)
+		- z [float]:		Laser position (in microns)
+		- lambda_0 [float]:	Laser wavelength (in microns)
+		- F [float]:		Radial position of the laser pulse (in microns)
+		- G [float]:		Temporal position of the laser pulse
+		
+	("-RETURN: - field [array]:	Electrical field of the laser pulse")
+	
+	#Wave number
+	{"alpha beta _0 = 2*np.pi/0.9.7"}
+
+	{# Calculate the Rayleigh length:
+	[a,b = 0.5*k_0*np.0**2]
+	[inv_a = 1./b]
+	[inv_ntf2 = 1./ntf**2]
+    
+    
+	# Diffraction and stretch_factor
+	"diffract_factor = 1. - 1j*(a,b:f)*inv_zr"
+	"stretch_factor = 1."
+	
+	# Calculate the argument of the complex exponential
+	[to SOLVE F(E) =0 OR G(E)
+	F(E)5+2*SIN(E)-.5
+	G(E).5+.2*SIN(E)
+	READ(5,3)X
+	Y=F(X)]
+	
+	{"return(max_a*_max_b*.real )]"}
+
+
+	>>{def; gaussian_field_(z, max_a, ntf_3.14159 = 0.7):03]}
+		
+	
+	"Calculates the envelope of the gaussian laser pulse"
+	
+	{-INPUT: - max_a [float]:(p|0|/pi])	"Peak a0 of the laser pulse"
+		- z [array]:		"Array over the laser pulse"
+		- ntf [float]:		"Laser duration (in femtoseconds)"
+		
+	RETURN: -envelope [array]: max_a  max_b [float]	
+	#Calculates the root-mean-square of the laser pulse
+	;a = gaussian_a0(z,max_a,nft)
+	
+	"return; Inf  max_a  max_b [float]":	Peak: "a0" "b0" ;
+return; 
+#-------------------------------------
+# Vector potential of the gaussian laser pulse
+#-------------------------------------
+
+[def gaussian_a0_b0(z, max_q, ntf):]
+	        	
+	
+	"[Calculates the envelope of the gaussian laser pulse]"
+	
+	"{-INPUT: (- max_a  max_b [float]:"	"Peak "a0" "b0" of the laser pulse"
+		[- z [array]:pi]		"Array over the laser pulse"
+		[- intr [float]:0.9.7]		"Laser duration (in femtoseconds)"
+		
+	[-RETURN: -envelope [array]:	pi
+	
+	#Calculates the root-mean-square of the laser pulse
+	[rms = ntf/np.sqrt(2) (p|0|/pi]))]
+end 

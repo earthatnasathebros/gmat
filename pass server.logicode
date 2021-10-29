@@ -1,0 +1,58 @@
+/////////////programe to pass cubesat//////////////////////
+q> (outcome ? (stimes 3r)s1}
+begin	in s1 
+	from 	rest moving,
+3*r inited height;
+pass through path s1
+
+flyaway at start of s2 ratio 
+	end
+
+q> (outcome ! (stime 2,4r)s1}
+begin	in s1
+	from	rest moving,
+2.4*r 	right, inited height;
+pass through path s1
+
+flyaway at start of s2 ratio
+	end
+q> (outcome ? (stime 2.2r)s1}
+begin in s1 
+	from 	rest moving
+2.2*r 	to right, inited height;
+	end
+pas through path :s1
+pas through path :s2
+pas through path :s3
+pas through path :s4
+pas through path :s5 
+pas throufht path :s6
+
+end
+q> (outcome! (stime 1;8r)s1}
+begin 	in s1	
+	from	rest moving
+1.8*r	right, inital height
+pas 	through path s1
+slide back
+into s2 ratio
+end 
+q> (outcome ? (stime 1.5r)s1}
+begin 	in s1
+	from	rest moving
+1.5*r	right,inital height
+slide back ratio 
+	read of sum
+<a(b) (outcome? (stimes 0.3r)s3 
+begin 	in s3
+	from moveing to 
+	right, inital height
+0.3*r slide back s4
+q> (outcomes? (stimes 1r)s3}
+begin	in s3
+	frame rest moves to
+1*r	right, inital height:
+pass        through path :s3
+fall of s4 ratio
+end 
+return

@@ -1,0 +1,2764 @@
+//Header file for Automatic termination
+#include "./Library/Energy_Conv.h"
+
+#define pi 3.14159265358979
+
+// Start Main code 
+
+int main()
+{
+	
+    /*Definition of Variables*/
+    
+    //Auxilarly Variables
+    int i, j, x, n, Run, loop, fre;        //variables for "for" loops
+    
+    /*P-Q Field Variables*/
+    //P-field for (n) time-steps
+    COMPLEX **px, **pxa;
+    COMPLEX **py, **pya, **pyb;
+    COMPLEX **pz, **pza;
+    //P-field for (n+1/2) time-steps
+    COMPLEX **past_px, **past_pxa;
+    COMPLEX **past_py, **past_pya, **past_pyb;
+    COMPLEX **past_pz, **past_pza;
+    
+    //Q-field for (n) time-steps
+    COMPLEX **qx;
+    COMPLEX **qy, **qya, **qyb;
+    COMPLEX **qz, **qza;
+    //Q-field for (n+1/2) time-steps    
+    COMPLEX **past_qx;
+    COMPLEX **past_qy, **past_qya, **past_qyb;
+    COMPLEX **past_qz, **past_qza;
+    
+    /*E-H Field Variables*/
+    //E-field
+    COMPLEX **Ex, **Ey, **Ez;
+
+    //H-field
+    COMPLEX **Hx, **Hy, **Hz;
+    
+    COMPLEX **rxx, **rxy, **rxz;
+    COMPLEX **ryx, **ryy, **ryz;
+    COMPLEX **rzx, **rzy, **rzz;
+    
+    double **Intensity;
+    
+    //Normalized Stokes Parameters
+    double **S0, **S1, **S2, **S3;
+    
+    //Coefficients for P-Q FDTD Equations inside of the structure    
+    COMPLEX **cepx1, **cepx2, **cepx3;        //'x'-components of the impermittivity tensor
+    COMPLEX **cepy1, **cepy2, **cepy3;        //'y'-components of the impermittivity tensor
+    COMPLEX **cepz1, **cepz2, **cepz3;        //'z'-components of the impermittivity tensor
+    COMPLEX **epx1, **epx2, **epx3;        //'x'-components of the permittivity tensor
+    COMPLEX **epy1, **epy2, **epy3;        //'y'-components of the permittivity tensor
+    COMPLEX **epz1, **epz2, **epz3;        //'z'-components of the permittivity tensor
+	double **condx, **condy, **condz;		 //conductivity along the x, y, z-axis
+    double **deltaxx, **deltaxy, **deltaxz; //coeffiecients for the a field update
+    double **deltayx, **deltayy, **deltayz;
+    double **deltazx, **deltazy, **deltazz;
+    COMPLEX **cxi11, **cxi12, **cxi13;
+    COMPLEX **cxi21, **cxi22, **cxi23;
+    COMPLEX **cxi31, **cxi32, **cxi33;
+    double **condxx, **condxy, **condxz;
+    double **condyx, **condyy, **condyz;
+    double **condzx, **condzy, **condzz;
+    COMPLEX **xi11, **xi12, **xi13;
+    COMPLEX **xi21, **xi22, **xi23;
+    COMPLEX **xi31, **xi32, **xi33;
+    COMPLEX **cqz1, **cqz2, **cqz3, **cqz4;   //coefficients for Qx field update
+    COMPLEX **cpz1, **cpz2, **cpz3;           //coefficients for Px field update
+    COMPLEX **cpx1, **cpx2;                   //coefficients for Py field update
+    COMPLEX **cpy1, **cpy2;                   //coefficients for Pz field update
+    
+    //Coefficients for P-Q FDTD Equations inside of PMLs    
+    double **Ppml_left1, **Ppml_left2;       //coefficients for P-field update in the left PML
+    double **Ppml_right1, **Ppml_right2;     //coefficients for P-field update in the right PML
+    double **Qpml_left1, **Qpml_left2;       //coefficients for Q-field update in the left PML
+    double **Qpml_right1, **Qpml_right2;     //coefficients for Q-field update in the right PML
+    
+    //Variables for Source Excitation
+    COMPLEX Source_TE1;      //TE component of the source at (n) time-steps
+    COMPLEX Source_TM1;      //TM component of the source at (n) time-steps
+    COMPLEX Source_TE2;      //TE component of the source at (n+1/2) time-steps
+    COMPLEX Source_TM2;      //TM component of the source at (n+1/2) time-steps
+    
+    //Frequency Information
+    double *freque;      //variable for frequencies    
+    
+    //Variables for the Vectorial Near-Field to Far-Field Transformation
+    int m;                      //the maximum diffraction order (number of diffracted orders is (2*m+1))
+    COMPLEX **Farfield_TE;      //TE component of the far-field
+    COMPLEX **Farfield_TM;      //TM component of the far-field
+    
+    //Variables for DFT
+    COMPLEX **DFT_TE;           //Fourier coefficient for the TE mode
+    COMPLEX **DFT_TM;           //Fourier coefficient for the TM mode
+    
+    //Variables for Efficiency Calculation
+    double *Sample_Intensity;        //average intensity on the sampling line
+    double **Input_Intensity;        //intensity of the source wave
+    double **Output_Intensity;       //intensity of the output wave
+    double **Efficiency;             //efficiencies for each frequency
+       
+    //Parameters from "Input.txt" 
+    double wl;           //the center wavelength of a source wave
+    int N;              //the grid-density (N=wl/du)
+    int Sine, Gauss;    //source type (Sinusoidal or Gaussian)
+    int frequency=201;      //number of frequencies = frequency+1
+    double f_min=0, f_max=2.0; //the minimum and maximum frequency in units of the center frequency (1/f0)
+    double psi, chi;     //incident polarization angles (orientation and ellipticity)
+    double theta_inc;    //incident angle
+    double dx;           //Grid spacing
+    double dt;           //Time step
+    double S;            //Courant stability factor
+    double kx;           //phase-term for the field transformation
+    double index_in;     //refractive index of incoming media
+    double index_out;    //refractive index of outgoing media
+    double period, prd;         //the system period
+    int Layers;         //number of layers in structure
+    
+    int *Type;          //type of each layer
+    double *thickness;   //thickness of each layer
+    double *pitch;      //optical pitch of each layer
+    double **n1, **n2, **n3; //primary refractive indices for custom structures
+    double **k1, **k2, **k3; //primary extinction coefficientes for custom structures
+	double *nx, *ny, *nz;	//refractive indices along the x, y, z-axis
+	double *sigma, *sigmax, *sigmay, *sigmaz;	//conductivity along the x, y, z-axis
+    double *kappax, *kappay, *kappaz, *kappa, *dkappa;        //extinction coefficients
+    double **alpha, **beta, **gamma; //Euler angles for custom structures
+    double *no;          //average refrative index (ordinary index for uniaxial media)
+    double *dn;          //index modulation (birefringence for uniaxial media)
+    double *nc;          //circular birefringence
+    double *ff;           //fill-factor of binary gratings
+    double *azimuth;     //angle of the optical axis from the x-axis on the x-y plane
+    double *polar;       //angle of the optical axis from the z-axis
+    double *twist;       //twist angle in the case of LC structures
+    double *AR_n1, *AR_n2; //refractive indices of gradient-index AR layers
+    double *AR_k1, *AR_k2; //imaginary indices of gradient-index AR layer
+    int PEC=0;             //insert perfect electrical conductor layer 
+    //int Polarizer[2]={0,0};       //insert perfect polarizer
+    int Option[12]={0};//Output options
+    int Data[20]={0};
+    
+    char *Source_Mono, *Source_Gauss, *Iteration, *OutputOption;
+    int Variable=0, NoS, Sample_Time=0;
+    double Min, Max, Res;
+    
+    //Dimensions of the Computational Space
+    int ie, ib;         //the dimension along the x-axis (ib=ie+1)
+    int je, jb;         //the dimension along the y-axis (jb=je+1)
+    int *left, *right;  //left and right boundaries of each layer
+    int thick;          //the thickness of the structure
+    int zleft;          //the left-boundary of the structure
+    int zright;         //the right-boundary of the structure
+    int pml;            //the thickness of PMLs
+    int source;         //the location of source
+    int sample_line;    //the location of sampling
+    double sample_index; //refractive index on the sampling line
+    
+    //Time Durations    
+    int Tmax;           //the maximum time-step
+    int nmin;           //start of DFT sampling
+    int nmax;           //end of DFT sampling    
+    double Width, Gauss_Width;  //the time-domain width of a Gaussain pulse
+    double Gauss_Delay;        //the time Gauss_Delay for smooth tails of a Gaussian pulse
+    
+    //Auto-determination of DFT duration
+    double Power;
+    double Power_max, index_max=1.0;
+    int flag1=0;
+        
+    //Auto-termination for monochromatic source
+    int flag2=0;
+    
+    //Variables for IO   
+    FILE *input, *fp;
+    char outdirectory[50], outfile[50];
+    char custom[50], Folder[50];
+    /*
+    //Simulation Time Record
+    time_t initial_time;    //the time on the start of a simulation
+    time_t final_time;      //the time on the end of a simulation
+    */
+    //Simulation Time Record    
+    sprintf(outdirectory, "Result");    //create a new folder for saving data
+    mkdir(outdirectory, 0755);     
+    /*
+    initial_time = time(0);             //check the current time
+    sprintf(outfile, "./Result/Simul_Time.txt");    //create a  text file for recording time    
+    fp = fopen(outfile, "w+");
+    fprintf(fp, "%10s:%s\n","Initial Time",asctime(localtime(&initial_time)));  //record the current time
+    */
+    
+    Source_Mono=(char*)malloc(1*sizeof(char));
+    Source_Gauss=(char*)malloc(1*sizeof(char));
+    
+    /*Read input parameters from "input.txt"*/    
+    input=fopen("Input.txt", "r");
+    fscanf(input, "/*  Simulation Settings  */\n");
+    fscanf(input, "\tGrid_Resolution [N] = [%d]\n",&N);
+    fscanf(input, "\tPeriod_of_System [um] = [%lf]\n",&period);
+    fscanf(input, "\tMaximum_Time_Step [Tmax] = [%d]\n",&Tmax);
+    fscanf(input, "\tIncident_Angle [deg] = [%lf]\n",&theta_inc);
+    fscanf(input, "\tIncoming_Index [n_in] = [%lf]\n",&index_in);
+    fscanf(input, "\tOutgoing_Index [n_out] = [%lf]\n",&index_out);
+    fscanf(input, "\n\n");
+    printf("/*  Simulation Settings  */\n");
+    printf("\tGrid_Resolution [N] = [%d]\n",N);
+    printf("\tPeriod_of_System [um] = [%lf]\n",period);
+    printf("\tMaximum_Time_Step [Tmax] = [%d]\n",Tmax);
+    printf("\tIncident_Angle [deg] = [%lf]\n",theta_inc);theta_inc=theta_inc*pi/180.0;
+    printf("\tIncoming_Index [n_in] = [%lf]\n",index_in);
+    printf("\tOutgoing_Index [n_out] = [%lf]\n",index_out);
+    printf("\n\n");
+    
+    fscanf(input, "/*  Illumination Source  */\n");
+    fscanf(input, "\tWavelength [um] = [%lf]\n",&wl);
+    fscanf(input, "\tMonochromatic_Wave [Y/N] = [%c]\n",&Source_Mono[0]);
+    if(strcmp(Source_Mono,"Y")==0)
+    {
+        Sine=1;
+        Gauss=0;
+    }
+    fscanf(input, "\tGaussian_Pulse [Y/N] = [%c]\n",&Source_Gauss[0]);
+    if(strcmp(Source_Gauss,"Y")==0)
+    {
+        Sine=0;
+        Gauss=1;
+    }
+        
+    if(Gauss==1)
+    {
+        fscanf(input, "\tPulse_Width [fsec] = [%lf]\n", &Width);
+    }
+    else
+    {
+        fscanf(input, "\tPulse_Width [fsec] = [N/A]\n");Width=0;
+    }
+    fscanf(input, "\tPolarization_Angle_Psi [deg] = [%lf]\n",&psi);
+    fscanf(input, "\tPolarization_Angle_Chi [deg] = [%lf]\n",&chi);
+    fscanf(input, "\n\n");
+    printf("/*  Illumination Source  */\n");
+    printf("\tWavelength [um] = [%lf]\n",wl);
+    printf("\tMonochromatic_Wave [Y/N] = [%c]\n",Source_Mono[0]); 
+    printf("\tGaussian_Pulse [Y/N] = [%c]\n",Source_Gauss[0]); 
+    if(Gauss==1)
+    {
+        printf("\tPulse_Width [fsec] = [%lf]\n",Width);
+    }
+    else
+    {
+        printf("\tPulse_Width [fsec] = [N/A]\n");
+    }
+    printf("\tPolarization_Angle_Psi [deg] = [%lf]\n",psi);psi=psi*pi/180.0;
+    printf("\tPolarization_Angle_Chi [deg] = [%lf]\n",chi);chi=chi*pi/180.0;
+    printf("\n\n");
+    
+    fscanf(input, "\t/*  Model Definition  */\n");
+    fscanf(input, "\tNumber_of_Layers [#] = [%d]\n",&Layers);
+    printf("\t/*  Model Definition  */\n");
+    printf("\tNumber_of_Layers [#] = [%d]\n",Layers);
+        
+    Type=int_1D(Layers);
+    thickness=double_1D(Layers);
+    pitch=double_1D(Layers);
+	nx=double_1D(Layers);		ny=double_1D(Layers);		nz=double_1D(Layers);
+    sigma=double_1D(Layers);
+	sigmax=double_1D(Layers);	sigmay=double_1D(Layers);	sigmaz=double_1D(Layers);
+    kappax=double_1D(Layers);	kappay=double_1D(Layers);	kappaz=double_1D(Layers); kappa=double_1D(Layers); dkappa=double_1D(Layers);
+    nx=double_1D(Layers);   ny=double_1D(Layers);   nz=double_1D(Layers);
+    no=double_1D(Layers);
+    dn=double_1D(Layers);
+    nc=double_1D(Layers);
+    ff=double_1D(Layers);
+    polar=double_1D(Layers);
+    azimuth=double_1D(Layers);
+    twist=double_1D(Layers);
+    AR_n1=double_1D(Layers);
+    AR_n2=double_1D(Layers);
+    AR_k1=double_1D(Layers);
+    AR_k2=double_1D(Layers);
+    
+    Iteration=(char*)malloc(1*sizeof(char));
+    OutputOption=(char*)malloc(1*sizeof(char));
+    
+    /*Definition of Strucutre
+      Each layer will be stacked in orders of its definition along the x-direction.
+     
+      |<--------------- width ---------------->|
+      ------------------------------------------        |---> y
+      Layer 1                                           |
+      ------------------------------------------      x V
+      Layer 2
+      ------------------------------------------
+                          :
+                          :
+      ------------------------------------------
+      Layer L
+      ------------------------------------------                */
+    
+    for(i=0;i<Layers;i++)
+    {          
+        pitch[i]=(double)N*period/wl;
+        fscanf(input, "\n");
+        fscanf(input, "\tType[%d]", &Type[i]);
+        printf("\n");
+        printf("\tType[%d]", Type[i]);
+        switch (Type[i])
+        {
+            case 0:
+            {
+                fscanf(input, "_Anti-Reflection_Coating\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Incoming_Index [-] = [%lf]\n", &AR_n1[i]);
+                fscanf(input, "\t\t-Outgoing_Index [-] = [%lf]\n", &AR_n2[i]);
+                printf("_Anti-Reflection_Coating\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Incoming_Index [-] = [%lf]\n", AR_n1[i]);
+                printf("\t\t-Outgoing_Index [-] = [%lf]\n", AR_n2[i]);
+            }
+            break;
+            
+            case 1:
+            {
+                fscanf(input, "_Circular_Polarization_Grating\n");
+                fscanf(input, "\t\t-Num. of Periods = [%lf]\n", &pitch[i]);
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Ordinary_Index [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Birefringence [-] = [%lf]\n", &dn[i]);
+                fscanf(input, "\t\t-Pretilt [degrees] = [%lf]\n", &polar[i]);
+                fscanf(input, "\t\t-Twist [degrees] = [%lf]\n", &twist[i]);
+                fscanf(input, "\t\t-Relative_Phase [degrees] = [%lf]\n", &azimuth[i]);
+                printf("_Circular_Polarization_Grating\n");
+                printf("\t\t-Num. of Periods = [%lf]\n", pitch[i]);
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Ordinary_Index [-] = [%lf]\n", no[i]);
+                printf("\t\t-Birefringence [-] = [%lf]\n", dn[i]);
+                printf("\t\t-Pretilt [degrees] = [%lf]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+                printf("\t\t-Twist [degrees] = [%lf]\n", twist[i]); twist[i]=twist[i]*pi/180.0;
+                printf("\t\t-Relative_Phase [degrees] = [%lf]\n", azimuth[i]); azimuth[i]=azimuth[i]*pi/180.0;
+            }
+            break;
+            
+            case 2:
+            {
+                fscanf(input, "_Linear_Polarization_Grating\n");
+                fscanf(input, "\t\t-Num. of Periods = [%lf]\n", &pitch[i]);
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Ordinary_Index [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Linear_Birefringence [-] = [%lf]\n", &dn[i]);
+                fscanf(input, "\t\t-Circular_Birefringence [-] = [%lf]\n", &nc[i]);
+                fscanf(input, "\t\t-Pretilt [degrees] = [%lf]\n", &polar[i]);
+                fscanf(input, "\t\t-Twist [degrees] = [%lf]\n", &twist[i]);
+                fscanf(input, "\t\t-Relative_Phase [degrees] = [%lf]\n", &azimuth[i]);
+                printf("_Linear_Polarization_Grating\n");
+                printf("\t\t-Num. of Periods = [%lf]\n", pitch[i]);
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Ordinary_Index [-] = [%lf]\n", no[i]);
+                printf("\t\t-Linear_Birefringence [-] = [%lf]\n", dn[i]);
+                printf("\t\t-Circular_Birefringence [-] = [%lf]\n", nc[i]);
+                printf("\t\t-Pretilt [degrees] = [%lf]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+                printf("\t\t-Twist [degrees] = [%lf]\n", twist[i]); twist[i]=twist[i]*pi/180.0;
+                printf("\t\t-Relative_Phase [degrees] = [%lf]\n", azimuth[i]); azimuth[i]=azimuth[i]*pi/180.0;
+            }
+            break;
+            
+            case 3:
+            {
+                fscanf(input, "_Isotropic_Dielectric_Slab\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Index [-] = [%lf]\n", &no[i]);
+                printf("_Isotropic_Dielectric_Slab\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Index [-] = [%lf]\n", no[i]);
+            }
+            break;
+            
+            case 4:
+            {
+                fscanf(input, "_Lossy_Dielectric_Slab\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Index_x [-] = [%lf]\n", &nx[i]);
+                fscanf(input, "\t\t-Index_y [-] = [%lf]\n", &ny[i]);
+                fscanf(input, "\t\t-Index_z [-] = [%lf]\n", &nz[i]);
+                fscanf(input, "\t\t-Absorption_Coefficient_x [1/m] = [%lf]\n", &sigmax[i]);
+                fscanf(input, "\t\t-Absorption_Coefficient_y [1/m] = [%lf]\n", &sigmay[i]);
+                fscanf(input, "\t\t-Absorption_Coefficient_z [1/m] = [%lf]\n", &sigmaz[i]);
+                printf("_Isotropic_Absorbing_Slab\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Index_x [-] = [%lf]\n", nx[i]);
+                printf("\t\t-Index_y [-] = [%lf]\n", ny[i]);
+                printf("\t\t-Index_z [-] = [%lf]\n", nz[i]);
+                printf("\t\t-Absorption_Coefficient_x [1/m] = [%lf]\n", sigmax[i]);
+                printf("\t\t-Absorption_Coefficient_y [1/m] = [%lf]\n", sigmay[i]);
+                printf("\t\t-Absorption_Coefficient_z [1/m] = [%lf]\n", sigmaz[i]);
+            }
+            break;
+            
+            case 5:
+            {
+                fscanf(input, "_Twisted-Nematic_Liquid_Crystal\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Average_Index [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Birefringence [-] = [%lf]\n", &dn[i]);
+                fscanf(input, "\t\t-Pretilt [degrees] = [%lf]\n", &polar[i]);
+                fscanf(input, "\t\t-Twist [degrees] = [%lf]\n", &twist[i]);
+                fscanf(input, "\t\t-Azimuth [degrees] = [%lf]\n", &azimuth[i]);
+                printf("_Twisted-Nematic_Liquid_Crystal\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Average_Index [-] = [%lf]\n", no[i]);
+                printf("\t\t-Birefringence [-] = [%lf]\n", dn[i]);
+                printf("\t\t-Pretilt [degrees] = [%lf]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+                printf("\t\t-Twist [degrees] = [%lf]\n", twist[i]); twist[i]=twist[i]*pi/180.0;
+                printf("\t\t-Azimuth [degrees] = [%lf]\n", azimuth[i]); azimuth[i]=azimuth[i]*pi/180.0;
+            }
+            break;
+            
+            case 6:
+            {
+                fscanf(input, "_Sinusoidal_Grating\n");
+                fscanf(input, "\t\t-Num. of Periods = [%lf]\n", &pitch[i]);
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Average_Index [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Index_Modulation_Amplitude [-] = [%lf]\n", &dn[i]);
+                printf("_Sinusoidal_Grating\n");
+                printf("\t\t-Num. of Periods = [%lf]\n", pitch[i]);
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Average_Index [-] = [%lf]\n", no[i]);
+                printf("\t\t-Index_Modulation_Amplitude [-] = [%lf]\n", dn[i]);
+            }
+            break;
+            
+            case 7:
+            {
+                fscanf(input, "_Binary_Phase_Grating\n");
+                fscanf(input, "\t\t-Num. of Periods = [%lf]\n", &pitch[i]);
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Average_Index [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Index_Contrast_Amplitude [-] = [%lf]\n", &dn[i]);
+                fscanf(input, "\t\t-Fill-Factor [-] = [%lf]\n", &ff[i]);
+                printf("_Binary_Phase_Grating\n");
+                printf("\t\t-Num. of Periods = [%lf]\n", pitch[i]);
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Average_Index [-] = [%lf]\n", no[i]);
+                printf("\t\t-Index_Contrast_Amplitude [-] = [%lf]\n", dn[i]);
+                printf("\t\t-Fill-Factor [-] = [%lf]\n", ff[i]);
+            }
+            break;
+            
+            case 8:
+            {
+                fscanf(input, "_Waveplate\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Average_Index [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Birefringence [-] = [%lf]\n", &dn[i]);
+                fscanf(input, "\t\t-Tilt [degrees] = [%lf]\n", &polar[i]);
+                fscanf(input, "\t\t-Azimuth [degrees] = [%lf]\n", &azimuth[i]);
+                printf("_Waveplate\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Average_Index [-] = [%lf]\n", no[i]);
+                printf("\t\t-Birefringence [-] = [%lf]\n", dn[i]);
+                printf("\t\t-Tilt [degrees] = [%lf]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+                printf("\t\t-Azimuth [degrees] = [%lf]\n", azimuth[i]); azimuth[i]=azimuth[i]*pi/180.0;
+            }
+            break;
+            
+            case 9:
+            {
+                fscanf(input, "_Prismatic_Film\n");
+                fscanf(input, "\t\t-Num. of Periods = [%lf]\n", &pitch[i]);
+                fscanf(input, "\t\t-Prism_Angle [degrees] = [%lf]\n", &polar[i]);
+                fscanf(input, "\t\t-Index1 [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Index2 [-] = [%lf]\n", &dn[i]);
+                printf("_Prismatic_Film\n");
+                printf("\t\t-Num. of Periods = [%lf]\n", pitch[i]);
+                printf("\t\t-Prism_Angle [degrees] = [%lf]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+                if(polar[i]>0)
+                {
+                    thickness[i]=0.5*period/pitch[i]/tan(0.5*polar[i]);
+                }
+                else if(polar[i]<0)
+                {
+                    thickness[i]=0.5*period/pitch[i]/tan(-0.5*polar[i]);
+                }
+                printf("\t\t-Index1 [-] = [%lf]\n", no[i]);
+                printf("\t\t-Index2 [-] = [%lf]\n", dn[i]);
+            }
+            break;
+            
+            case 10:
+            {
+                fscanf(input, "_Custom_Layer\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Definition_Directory [-] = [%s ]\n", &custom);
+                printf("_Custom_Layer\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Definition_Directory [-] = [%s]\n", custom);
+            }
+            break;
+            
+            case 11:
+            {
+                fscanf(input, "_Aniso_Lossy_Dielectric_Slab\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Index_x [-] = [%lf]\n", &nx[i]);
+                fscanf(input, "\t\t-Index_y [-] = [%lf]\n", &ny[i]);
+                fscanf(input, "\t\t-Index_z [-] = [%lf]\n", &nz[i]);
+                fscanf(input, "\t\t-Conductivity_x [1/ohm] = [%lf]\n", &sigmax[i]);
+                fscanf(input, "\t\t-Conductivity_y [1/ohm] = [%lf]\n", &sigmay[i]);
+                fscanf(input, "\t\t-Conductivity_z [1/ohm] = [%lf]\n", &sigmaz[i]);
+                fscanf(input, "\t\t-Polar [degrees] = [%lf]\n", &polar[i]);
+                fscanf(input, "\t\t-Azimuth [degrees] = [%lf]\n", &azimuth[i]);
+                printf("_Aniso_Lossy_Dielectric_Slab\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Index_x [-] = [%lf]\n", nx[i]);
+                printf("\t\t-Index_y [-] = [%lf]\n", ny[i]);
+                printf("\t\t-Index_z [-] = [%lf]\n", nz[i]);
+                printf("\t\t-Absorption_Coefficient_x [1/m] = [%lf]\n", sigmax[i]);
+                printf("\t\t-Absorption_Coefficient_y [1/m] = [%lf]\n", sigmay[i]);
+                printf("\t\t-Absorption_Coefficient_z [1/m] = [%lf]\n", sigmaz[i]);
+                printf("\t\t-Polar angle [radians] = [%1f]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+                printf("\t\t-Azimuth angle [radians] = [%1f]\n", azimuth[i]); azimuth[i]=azimuth[i]*pi/180.0;
+            }
+            break;
+            
+            case 12:
+            {
+                fscanf(input, "_Isotropic_Lossy_Slab\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Real_Index [-] = [%lf]\n", &nx[i]);
+                fscanf(input, "\t\t-Imaginary_Index [-] = [%lf]\n", &kappax[i]);
+                printf("Iso_Lossy_Slab\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Real_Index [-] = [%lf]\n", nx[i]);
+                printf("\t\t-Imaginary_Index [-] = [%lf]\n", kappax[i]);
+            }
+            break;
+            
+            case 13:
+            {
+                fscanf(input, "_Polarizer\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Absorption_Axis_Real_Index [-] = [%lf]\n", &ny[i]);
+                fscanf(input, "\t\t-Transmittion_Axis_Real_Index [-] = [%lf]\n", &nx[i]);
+                fscanf(input, "\t\t-Absorption_Axis_Imaginary_Index [-] = [%lf]\n", &kappay[i]);
+                fscanf(input, "\t\t-Transmition_Axis_Imaginary_Index [-] = [%lf]\n", &kappax[i]);
+                fscanf(input, "\t\t-Azimuth [degrees] = [%lf]\n", &azimuth[i]);
+                fscanf(input, "\t\t-Tilt [degrees] = [%lf]\n", &polar[i]);
+                printf("_Polarizer\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Absorption_Axis_Real_Index [-] = [%lf]\n", ny[i]);
+                printf("\t\t-Transmittion_Axis_Real_Index [-] = [%lf]\n", nx[i]);
+                printf("\t\t-Absorption_Axis_Imaginary_Index [1/m] = [%lf]\n", kappay[i]);
+                printf("\t\t-Transmition_Axis_Imaginary_Index [1/m] = [%lf]\n", kappax[i]);
+                printf("\t\t-Azimuth angle [radians] = [%1f]\n", azimuth[i]); azimuth[i]=azimuth[i]*pi/180.0;
+                printf("\t\t-Tilt angle [radians] = [%1f]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+            }
+            break;
+            
+            case 14:
+            {
+                fscanf(input, "_AbsorbingCircularPG\n");
+                fscanf(input, "\t\t-Num. of Periods = [%lf]\n", &pitch[i]);
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Ordinary_Index [-] = [%lf]\n", &no[i]);
+                fscanf(input, "\t\t-Birefringence [-] = [%lf]\n", &dn[i]);
+                fscanf(input, "\t\t-Ordinary_Extinction_Coefficient [-] = [%lf]\n", &kappa[i]);
+                fscanf(input, "\t\t-Dichroism [-] = [%lf]\n", &dkappa[i]);
+                fscanf(input, "\t\t-Twist [degrees] = [%lf]\n", &twist[i]);
+                fscanf(input, "\t\t-Relative_Phase [degrees] = [%lf]\n", &azimuth[i]);
+                fscanf(input, "\t\t-Tilt [degrees] = [%lf]\n", &polar[i]);
+                printf("_Circular_Polarization_Grating\n");
+                printf("\t\t-Num. of Periods = [%lf]\n", pitch[i]);
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Ordinary_Index [-] = [%lf]\n", no[i]);
+                printf("\t\t-Birefringence [-] = [%lf]\n", dn[i]);
+                printf("\t\t-Ordinary_Extinction_Coefficient [1/m] = [%lf]\n", kappa[i]);
+                printf("\t\t-Dichroism [1/m] = [%lf]\n", dkappa[i]);
+                printf("\t\t-Twist [degrees] = [%lf]\n", twist[i]); twist[i]=twist[i]*pi/180.0;
+                printf("\t\t-Relative_Phase [degrees] = [%lf]\n", azimuth[i]); azimuth[i]=azimuth[i]*pi/180.0;
+                printf("\t\t-Tilt angle [radians] = [%1f]\n", polar[i]); polar[i]=polar[i]*pi/180.0;
+            }
+            break;
+            
+            case 15:
+            {
+                fscanf(input, "_Lossy_Anti-Reflection_Coating\n");
+                fscanf(input, "\t\t-Thickness [um] = [%lf]\n", &thickness[i]);
+                fscanf(input, "\t\t-Incoming_Index [-] = [%lf]\n", &AR_n1[i]);
+                fscanf(input, "\t\t-Outgoing_Index [-] = [%lf]\n", &AR_n2[i]);
+                fscanf(input, "\t\t-Incoming_Extinction_Coefficient [-] = [%lf]\n", &AR_k1[i]);
+                fscanf(input, "\t\t-Outgoing_Extinction_Coefficient [-] = [%lf]\n", &AR_k2[i]);
+                printf("_Anti-Reflection_Coating\n");
+                printf("\t\t-Thickness [um] = [%lf]\n", thickness[i]);
+                printf("\t\t-Incoming_Index [-] = [%lf]\n", AR_n1[i]);
+                printf("\t\t-Outgoing_Index [-] = [%lf]\n", AR_n2[i]);
+                printf("\t\t-Incoming_Extinction_Coefficient [-] = [%lf]\n", AR_k1[i]);
+                printf("\t\t-Outgoing_Extinction_Coefficient [-] = [%lf]\n", AR_k2[i]);
+            }
+            break;
+            
+        }
+    }
+    fscanf(input, "\n\n\n");
+    printf("\n\n\n");
+    
+    for(i=0;i<Layers;i++)
+    {
+        if(index_max<no[i]+dn[i])
+        {
+            index_max=no[i]+dn[i];
+        }
+    }
+    
+    fscanf(input, "/*  Loop  */\n");
+    fscanf(input, "\tRun_Iterative_Simulation [Y/N] = [%c]\n", &Iteration[0]);   
+    if(strcmp(Iteration,"N")==0)
+    {
+        Variable=0;
+    }
+    printf("/*  Loop  */\n");
+    printf("\tRun_Iterative_Simulation [Y/N] = [%c]\n", Iteration[0]);
+       
+    fscanf(input, "\tType[%d]", &Variable);
+    printf("\tType[%d]", Variable);
+    if(Variable==1)
+    {
+        fscanf(input, "_Grating_Variation\n");
+        fscanf(input, "\tMinimum_Grating_Period [um] = [%lf]\n", &Min);
+        fscanf(input, "\tMaximum_Grating_Period [um] = [%lf]\n", &Max);
+        fscanf(input, "\tStep_Size [um] = [%lf]\n", &Res);
+        fscanf(input, "\n");
+        printf("_Grating_Variation\n");
+        printf("\tMinimum_Grating_Period [um] = [%lf]\n", Min);
+        printf("\tMaximum_Grating_Period [um] = [%lf]\n", Max);
+        printf("\tStep_Size [um] = [%lf]\n", Res);
+        printf("\n");
+    }
+    
+    if(Variable==2)
+    {
+        fscanf(input, "_Angle_Variation\n");
+        fscanf(input, "\tStart_Angle [deg] = [%lf]\n", &Min);
+        fscanf(input, "\tEnd_Angle [deg] = [%lf]\n", &Max);
+        fscanf(input, "\tStep_Size [deg] = [%lf]\n", &Res);
+        fscanf(input, "\n");
+        printf("_Angle_Variation\n");
+        printf("\tStart_Angle [deg] = [%lf]\n", Min);
+        printf("\tEnd_Angle [deg] = [%lf]\n", Max);
+        printf("\tStep_Size [deg] = [%lf]\n", Res);
+        printf("\n");
+    }
+    
+    NoS=(int)((Max-Min)/Res)+1;
+    
+    fscanf(input, "/*  Output Options  */\n"); 
+    printf("/*  Output Options  */\n"); 
+    fscanf(input, "\tFrequencies [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tFrequencies [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[0]=1;
+    }
+    fscanf(input, "\tImpermittivityTensor [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tImpermittivityTensor [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[1]=1;
+    }
+    fscanf(input, "\tPermittivity_Tensor [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tPermittivity_Tensor [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[2]=1;
+    }
+    fscanf(input, "\tFar_Field_Efficiency [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tFar_Field_Efficiency [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[3]=1;
+    }
+    fscanf(input, "\tFar_Field_EM_Field [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tFar_Field_EM_Field [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[4]=1;
+    }
+    fscanf(input, "\tFar_Field_Stokes [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tFar_Field_Stokes [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[5]=1;
+    }
+    fscanf(input, "\tNear_Field_EM_Line [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tNear_Field_EM_Line [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[6]=1;
+    }
+    fscanf(input, "\tNear_Field_EM_Final_Map [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tNear_Field_EM_Final_Map [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[7]=1;
+    }
+    fscanf(input, "\tNear_Field_PQ_Line [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tNear_Field_PQ_Line [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[8]=1;
+    }
+    fscanf(input, "\tEM_Field_at_Step [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tEM_Field_at_Step [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[9]=1;
+    }
+    fscanf(input, "\tTime-step [sec] = [%d]\n", &Sample_Time);
+    printf("\tTime-step [sec] = [%d]\n", Sample_Time);
+    fscanf(input, "\tHDF [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tHDF [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[10]=1;
+    }Option[10]=0; //Disable HDF5 Option 
+    fscanf(input, "\tASCII [Y/N] = [%c]\n", &OutputOption[0]);
+    printf("\tASCII [Y/N] = [%c]\n", OutputOption[0]);
+    if(strcmp(OutputOption,"Y")==0)
+    {
+        Option[11]=1;
+    }Option[11]=1;
+    
+    
+    fclose(input);
+    
+    
+    
+    
+    //Memory Allocation for left- and right-boundaries of the sturcture    
+    left=int_1D(Layers);
+    right=int_1D(Layers);
+    
+
+    
+    //Set the Courant stability factor
+    S=pow(cos(theta_inc),2)/sqrt(1+pow(cos(theta_inc),2));
+    kx=sin(theta_inc);
+    dx=wl*1e-6/N;
+    dt=S*dx/2.998e8;
+    
+    //See the Gaussian pulse profile
+    //Gauss_Width=1.0/S/3*N; printf("Gauss_Witdh=%0.2lf\n",Gauss_Width);
+    Gauss_Width=0.3*N*Width/S/wl;//printf("Gauss_Width=%.2lf\n",Gauss_Width);
+    Gauss_Delay=3*Gauss_Width;
+    
+    //Calculate the possible number of diffracted orders
+    //m=(int)((index_out+sqrt(pow(sin(theta_inc),2)))*period/wl);
+    m=20;
+    
+    
+    //Memory Allocation for DFT
+	freque=double_1D(frequency);
+    for (fre=0; fre<frequency; fre++)
+    {
+        freque[fre]=f_min+(double)fre/(double)(frequency-1)*(f_max-f_min);
+    }
+    
+    //Store the frequency information
+    if(Option[0]==1)
+    {
+        if(Option[11]==1)
+        {
+            sprintf(outfile, "./Result/Frequency.txt");
+            Store_double_1D(outfile, freque, frequency);
+        }
+    }
+
+    
+    
+    sprintf(Folder, "%s", custom);
+        
+    
+    /*Each simulation consists of two independent FDTD calculations w/ and w/o the structure.
+      The fist calculation (loop=0) is to get the information of a source wave.
+      The second calculation (loop=1) is to get the response to the system with the problem structure.*/
+    
+    if(strcmp(Iteration,"N")==0)
+    {
+        NoS=1;
+    }
+    
+    for(Run=0;Run<NoS;Run++)
+    {
+        if(Option[11]==1)
+        {
+            sprintf(outdirectory, "./Result/Simulation_%d", Run);
+            mkdir(outdirectory, 0755);
+        }
+        
+        //Memoery Allocation for Efficiency and Intensities
+        Efficiency=double_2D(frequency,(2*m+1));
+        Input_Intensity=double_2D(frequency,(2*m+1));
+        Output_Intensity=double_2D(frequency,(2*m+1));
+        
+        for (loop=0;loop<=1;loop++)
+        {
+            flag1=0;
+            flag2=0;
+            
+            //Interative Simulation
+            if(strcmp(Iteration,"Y")==0 && Variable==1)
+            {
+                period=Min+Res*(double)Run;
+                
+                if(loop==1)
+                {
+                    printf("\nPeriod=%.2lf[um]\n",period);
+                }
+            }
+            if(strcmp(Iteration,"Y")==0 && Variable==2)
+            {
+                theta_inc=Min+Res*(double)Run;
+                if(loop==1)
+                {
+                    printf("\nIncident Angle=%.2lf[deg]\n",theta_inc);
+                }
+                theta_inc=theta_inc/180.0*pi;
+                kx=sin(theta_inc);
+                S=pow(cos(theta_inc),2)/sqrt(1+pow(cos(theta_inc),2));
+                dt=S*dx/2.998e8;
+            }
+            
+            
+            //Set the left- and right-boundaries in the computational space
+            for(i=0;i<Layers;i++)
+            {
+                if(strcmp(Iteration,"Y")==0 && Variable==1 && Type[i]==9)
+                {
+                    if(polar[i]>0)
+                    {
+                        thickness[i]=0.5*period/pitch[i]/tan(0.5*polar[i]);
+                    }
+                    else if(polar[i]<0)
+                    {
+                        thickness[i]=0.5*period/pitch[i]/tan(-0.5*polar[i]);
+                    }
+                }
+                if(i==0)
+                {
+                    left[i]=0;
+                    right[i]=(int)(thickness[i]/wl*N);
+                }
+                else
+                {
+                    left[i]=right[i-1];
+                    right[i]=right[i-1]+(int)(thickness[i]/wl*N);
+                }
+            }
+            
+            /*Set the dimensions in computational space*/
+            thick=right[Layers-1];   //thickness in units of du
+            
+            //printf("period=%lf, wl=%lf, N=%d\n",period,wl,N);
+            je=(int)(period/wl*(double)N);  //y-dimension in units of du
+            //printf("je=%d\n",je);
+
+            ///the dimension is limited to one wavelength for the first simulation with only a source wave.
+            if(loop==0)
+            {
+                thick=N;
+                je=N;
+            }
+            pml=40; //Set the thickness of PML
+            source=pml+N;  //Set the source line
+            zleft=source+N; //left-side of structures
+            zright=zleft+thick; //right-side of grating
+            ie=zright+N+pml;
+            
+            
+            ib=ie+1;
+            jb=je+1;
+            
+            /*Save Parameters*/
+            if(Run==0 && loop==1)
+            {
+                sprintf(outfile, "./Result/Parameter.txt");
+                
+                fp = fopen(outfile, "w+");
+                fprintf(fp, "# of Frequency = [%d]\n", frequency);
+                fprintf(fp, "# of Diffraction Orders = [%d]\n", m);
+                fprintf(fp, "x-dimension (du) = [%d]\n", ie);
+                fprintf(fp, "y-dimension (du) = [%d]\n", je);
+                fclose(fp);
+            }
+
+            if(loop==0)
+            {
+                sample_line=source+1;   //sampling line
+                sample_index=index_in;  //refractive index on the sampling line
+
+                if(Sine==1)
+                {
+                    nmax=2*(int)((double)N/S);
+                }
+                else if(Gauss==1)
+                {
+                    nmin=0;                 //start of DFT Sampling
+                    nmax=2*(int)Gauss_Delay;           //end of DFT Sampling
+                }
+            }
+            if(loop==1)
+            {
+                sample_line=zright+1;   //sampling line
+                if(PEC==1)
+                {
+                    sample_line=source+1;
+                }
+                sample_index=index_out; //refractive index on the sampling line
+
+                if(Sine==1)
+                {
+                    nmax=Tmax;
+                }
+                else if(Gauss==1)
+                {
+                    nmin=Tmax;              //start of DFT Sampling
+                    nmax=Tmax;              //end of DFT sampling
+                }
+            }
+
+
+
+
+            /*Memory Allocation & Initialization*/
+
+            //P-field (n) time-step
+            pxa=complex_2D(ie,jb);      px=complex_2D(ie,jb);
+            pya=complex_2D(ie,je);      pyb=complex_2D(ie, je);     py=complex_2D(ie,je);
+            pza=complex_2D(ib,je);      pz=complex_2D(ib,je);
+            //P-field (n+1/2) time-step
+            past_pxa=complex_2D(ie,jb);      past_px=complex_2D(ie,jb);
+            past_pya=complex_2D(ie,je);      past_pyb=complex_2D(ie, je);     past_py=complex_2D(ie,je);
+            past_pza=complex_2D(ib,je);      past_pz=complex_2D(ib,je);
+            //Q-field (n) time-step        
+            qx=complex_2D(ib,je);
+            qya=complex_2D(ib,jb);      qyb=complex_2D(ib,jb);      qy=complex_2D(ib,jb);
+            qza=complex_2D(ie,jb);      qz=complex_2D(ie,jb);
+            //Q-field (n+1/2) time-step
+            past_qx=complex_2D(ib,je);
+            past_qya=complex_2D(ib,jb);      past_qyb=complex_2D(ib,jb);      past_qy=complex_2D(ib,jb);
+            past_qza=complex_2D(ie,jb);      past_qz=complex_2D(ie,jb);
+            
+            rxx=complex_2D(ie,jb); rxy=complex_2D(ie,jb); rxz=complex_2D(ie,jb);
+            ryx=complex_2D(ie,jb); ryy=complex_2D(ie,jb); ryz=complex_2D(ie,jb);
+            rzx=complex_2D(ie,jb); rzy=complex_2D(ie,jb); rzz=complex_2D(ie,jb);
+
+            //E-field
+            Ex=complex_2D(ie,je);   Ey=complex_2D(ie,je);   Ez=complex_2D(ie,je);
+            
+            //H-field
+            Hx=complex_2D(ie,je);   Hy=complex_2D(ie,je);   Hz=complex_2D(ie,je);
+            
+            Intensity=double_2D(ie,je);
+
+            //Far-fields
+            Farfield_TE=complex_2D(frequency,(2*m+1));
+            Farfield_TM=complex_2D(frequency,(2*m+1));
+
+            //Fourier coefficients
+            DFT_TE=complex_2D(frequency,(2*m+1));
+            DFT_TM=complex_2D(frequency,(2*m+1));        
+
+            //Normalized Stokes Parameters
+            S0=double_2D(frequency,(2*m+1));
+            S1=double_2D(frequency,(2*m+1));
+            S2=double_2D(frequency,(2*m+1));
+            S3=double_2D(frequency,(2*m+1));
+            
+            //Average intensity on the sampling line        
+            Sample_Intensity=double_1D(nmax);
+
+            //Impermittivity tensor        
+            cepx1=complex_2D(thick,je);   cepx2=complex_2D(thick,je);   cepx3=complex_2D(thick,je);
+            cepy1=complex_2D(thick,je);   cepy2=complex_2D(thick,je);   cepy3=complex_2D(thick,je);
+            cepz1=complex_2D(thick,je);   cepz2=complex_2D(thick,je);   cepz3=complex_2D(thick,je);
+
+            //Conductivity
+            condx=double_2D(thick,je);   condy=double_2D(thick,je);   condz=double_2D(thick,je);
+            
+            //Coefficients for the anisotropic "a" field update
+            deltaxx=double_2D(thick,je); deltaxy=double_2D(thick,je); deltaxz=double_2D(thick,je);
+            deltayx=double_2D(thick,je); deltayy=double_2D(thick,je); deltayz=double_2D(thick,je);
+            deltazx=double_2D(thick,je); deltazy=double_2D(thick,je); deltazz=double_2D(thick,je);
+            
+            cxi11=complex_2D(thick,je); cxi12=complex_2D(thick,je); cxi13=complex_2D(thick,je);
+            cxi21=complex_2D(thick,je); cxi22=complex_2D(thick,je); cxi23=complex_2D(thick,je);
+            cxi31=complex_2D(thick,je); cxi32=complex_2D(thick,je); cxi33=complex_2D(thick,je);
+            
+            epx1=complex_2D(thick,je);   epx2=complex_2D(thick,je);   epx3=complex_2D(thick,je);
+            epy1=complex_2D(thick,je);   epy2=complex_2D(thick,je);   epy3=complex_2D(thick,je);
+            epz1=complex_2D(thick,je);   epz2=complex_2D(thick,je);   epz3=complex_2D(thick,je);
+    
+            condxx=double_2D(thick,je); condxy=double_2D(thick,je); condxz=double_2D(thick,je);
+            condyx=double_2D(thick,je); condyy=double_2D(thick,je); condyz=double_2D(thick,je);
+            condzx=double_2D(thick,je); condzy=double_2D(thick,je); condzz=double_2D(thick,je);
+ 
+            xi11=complex_2D(thick,je); xi12=complex_2D(thick,je); xi13=complex_2D(thick,je);
+            xi21=complex_2D(thick,je); xi22=complex_2D(thick,je); xi23=complex_2D(thick,je);
+            xi31=complex_2D(thick,je); xi32=complex_2D(thick,je); xi33=complex_2D(thick,je);
+
+            //Coefficients for the total field update
+            cqz1=complex_2D(thick,je);    cqz2=complex_2D(thick,je);    cqz3=complex_2D(thick,je);    cqz4=complex_2D(thick,je);
+            cpz1=complex_2D(thick,je);    cpz2=complex_2D(thick,je);    cpz3=complex_2D(thick,je);
+            cpx1=complex_2D(thick,je);    cpx2=complex_2D(thick,je);
+            cpy1=complex_2D(thick,je);    cpy2=complex_2D(thick,je);
+
+            //Coefficients for field update in PMLs            
+            Ppml_left1=double_2D(pml,je);    Ppml_left2=double_2D(pml,je);
+            Ppml_right1=double_2D(pml,je);   Ppml_right2=double_2D(pml,je);
+            Qpml_left1=double_2D(pml,je);    Qpml_left2=double_2D(pml,je);
+            Qpml_right1=double_2D(pml,je);   Qpml_right2=double_2D(pml,je);
+
+
+            //Coefficients Update
+            if(loop==1)
+            {
+                for(i=0;i<Layers;i++)
+                {
+
+                    switch (Type[i])
+                    {
+                        case 0:
+                        {
+                            AR_Coeff(left[i], right[i], 0, je,
+                            kx, AR_n1[i], AR_n2[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            deltaxx, deltaxy, deltaxz,
+                            deltayx, deltayy, deltayz,
+                            deltazx, deltazy, deltazz,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;
+
+                        case 1:
+                        {
+                            prd=(double)N*period/pitch[i]/wl;
+                            
+                            CircularPG_Coeff(left[i], right[i], 0, je,
+                            prd, kx, no[i], dn[i], polar[i], azimuth[i], twist[i],
+                            epx1, epx2, epx3,
+                            epy1, epy2, epy3,
+                            epz1, epz2, epz3,
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            deltaxx, deltaxy, deltaxz,
+                            deltayx, deltayy, deltayz,
+                            deltazx, deltazy, deltazz,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;        
+
+                        case 2:
+                        {
+                            prd=(double)N*period/pitch[i]/wl;
+                            
+                            LinearPG_Coeff(left[i], right[i], 0, je,
+                            prd, kx, no[i], dn[i], nc[i], polar[i], azimuth[i], twist[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;        
+
+                        case 3:
+                        {
+                            Dielectric_Coeff(left[i], right[i], 0, je,
+                            kx, no[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;
+
+                        case 4:
+                        {
+                            Anisotropic_Coeff(left[i], right[i], 0, je,
+                            kx, wl, N, S,
+                            nx[i], ny[i], nz[i],
+                            sigmax[i], sigmay[i], sigmaz[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            condx, condy, condz,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;
+
+                        case 5:
+                        {
+                            TN_LC_Coeff(left[i], right[i], 0, je,
+                            kx, no[i], dn[i], polar[i], azimuth[i], twist[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33);
+                        }
+                        break;
+
+                        case 6:
+                        {
+                            prd=(double)N*period/pitch[i]/wl;
+                            
+                            SineGrating_Coeff(left[i], right[i], 0, je,
+                            prd, kx, no[i], dn[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;
+
+                        case 7:
+                        {
+                            prd=(double)N*period/pitch[i]/wl;
+                            
+                            BinaryGrating_Coeff(left[i], right[i], 0, je,
+                            prd, kx, no[i], dn[i], ff[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;
+
+                        case 8:
+                        {
+                            Waveplate_Coeff(left[i], right[i], 0, je,
+                            kx, no[i], dn[i], polar[i], azimuth[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;
+
+                        case 9:
+                        {
+                            prd=(double)N*period/pitch[i]/wl;
+                            
+                            Prism_Coeff(left[i], right[i], 0, je,
+                            prd, kx, no[i], dn[i], polar[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;    
+
+                        case 10:
+                        {                    
+                            //primary refractive indices for custom structure
+                            n1=double_2D(right[i]-left[i],je);
+                            n2=double_2D(right[i]-left[i],je);
+                            n3=double_2D(right[i]-left[i],je);
+                            //primary extinction coefficients
+                            k1=double_2D(right[i]-left[i],je);
+                            k2=double_2D(right[i]-left[i],je);
+                            k3=double_2D(right[i]-left[i],je);
+                            //Import refractive indicies
+                            sprintf(outfile, "%s/n1.txt", Folder);
+                            Load_double_2D(outfile,n1,right[i]-left[i],je);
+                            sprintf(outfile, "%s/n2.txt", Folder);
+                            Load_double_2D(outfile,n2,right[i]-left[i],je);
+                            sprintf(outfile, "%s/n3.txt", Folder);
+                            Load_double_2D(outfile,n3,right[i]-left[i],je);
+                            //Import extinction coefficients
+                            sprintf(outfile, "%s/k1.txt", Folder);
+                            Load_double_2D(outfile,k1,right[i]-left[i],je);
+                            sprintf(outfile, "%s/k2.txt", Folder);
+                            Load_double_2D(outfile,k2,right[i]-left[i],je);
+                            sprintf(outfile, "%s/k3.txt", Folder);
+                            Load_double_2D(outfile,k3,right[i]-left[i],je);
+                            //Euler anlges
+                            alpha=double_2D(right[i]-left[i],je);
+                            beta=double_2D(right[i]-left[i],je);
+                            gamma=double_2D(right[i]-left[i],je);
+                            //Import data
+                            sprintf(outfile, "%s/alpha.txt", Folder);
+                            Load_double_2D(outfile,alpha,right[i]-left[i],je);
+                            sprintf(outfile, "%s/beta.txt", Folder);
+                            Load_double_2D(outfile,beta,right[i]-left[i],je);
+                            sprintf(outfile, "%s/gamma.txt", Folder);
+                            Load_double_2D(outfile,gamma,right[i]-left[i],je);
+                            
+                            Custom_Coeff(left[i], right[i], 0, je,
+                            kx, wl, N, S,
+                            n1, n2, n3,
+                            k1, k2, k3,
+                            alpha, beta, gamma,
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            condx, condy, condz,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2);
+                        }
+                        break;
+                        
+                        case 11:
+                        {
+                            printf("nx=%1f\n",nx[i]);
+                            printf("ny=%1f\n",ny[i]);
+                            printf("nz=%1f\n",nz[i]);
+                            printf("sigmax=%1f\n",sigmax[i]);
+                            printf("sigmay=%1f\n",sigmay[i]);
+                            printf("sigmaz=%1f\n",sigmaz[i]);
+                            printf("polar=%1f\n",polar[i]);
+                            printf("azimuth=%1f\n",azimuth[i]);
+                            printf("theta_inc=%f\n",theta_inc);
+                            printf("left[i]=%d    right[i]=%d\n",left[i],right[i]);
+                            Aniso_Lossy_Coeff(left[i], right[i], 0, je,
+                            azimuth[i], polar[i],
+                            nx[i], ny[i], nz[i],
+                            sigmax[i], sigmay[i], sigmaz[i],
+                            epx1, epx2, epx3,
+                            epy1, epy2, epy3,
+                            epz1, epz2, epz3,
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            condxx, condxy, condxz,
+                            condyx, condyy, condyz,
+                            condzx, condzy, condzz,
+                            deltaxx, deltaxy, deltaxz,
+                            deltayx, deltayy, deltayz,
+                            deltazx, deltazy, deltazz,
+                            xi11, xi12, xi13,
+                            xi21, xi22, xi23,
+                            xi31, xi32, xi33,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2, dt, theta_inc);
+                            printf("cqz1=%f, cqz2=%f, cqz3=%f, cqz4=%f\n",cqz1[1][1].r, cqz2[1][1].r, cqz3[1][1].r, cqz4[1][1].r);
+                            printf("x=%f\n",cepx1[1][1].r);
+                        }
+                        break;
+                        
+                        case 12:
+                        {
+                            Isotropic_Lossy_Slab(left[i], right[i], 0, je,
+                            nx[i], kappax[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            condxx, condxy, condxz,
+                            condyx, condyy, condyz,
+                            condzx, condzy, condzz,
+                            deltaxx, deltaxy, deltaxz,
+                            deltayx, deltayy, deltayz,
+                            deltazx, deltazy, deltazz,
+                            xi11, xi12, xi13,
+                            xi21, xi22, xi23,
+                            xi31, xi32, xi33,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2, 
+                            dt, theta_inc, wl);
+                        }
+                        break;
+                        
+                        case 13:
+                        {
+                            prd=(double)N*period/pitch[i]/wl;
+                            
+                            Polarizer(left[i], right[i], 0, je,
+                            azimuth[i], polar[i],
+                            nx[i], ny[i], 
+                            kappax[i], kappay[i],
+                            epx1, epx2, epx3,
+                            epy1, epy2, epy3,
+                            epz1, epz2, epz3,
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            condxx, condxy, condxz,
+                            condyx, condyy, condyz,
+                            condzx, condzy, condzz,
+                            deltaxx, deltaxy, deltaxz,
+                            deltayx, deltayy, deltayz,
+                            deltazx, deltazy, deltazz,
+                            xi11, xi12, xi13,
+                            xi21, xi22, xi23,
+                            xi31, xi32, xi33,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2, 
+                            dt, theta_inc, wl);
+                        }
+                        break;
+                        
+                        case 14:
+                        {
+                            prd=(double)N*period/pitch[i]/wl;
+                            
+                            AbsorbingCircularPG(left[i], right[i], 0, je,
+                            azimuth[i], polar[i], twist[i], prd,
+                            no[i], dn[i], 
+                            kappa[i], dkappa[i],
+                            epx1, epx2, epx3,
+                            epy1, epy2, epy3,
+                            epz1, epz2, epz3,
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            condxx, condxy, condxz,
+                            condyx, condyy, condyz,
+                            condzx, condzy, condzz,
+                            deltaxx, deltaxy, deltaxz,
+                            deltayx, deltayy, deltayz,
+                            deltazx, deltazy, deltazz,
+                            xi11, xi12, xi13,
+                            xi21, xi22, xi23,
+                            xi31, xi32, xi33,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2, 
+                            dt, theta_inc, wl);
+                        }
+                        break;
+                        
+                        case 15:
+                        {
+                            LossyAR(left[i], right[i], 0, je,
+                            kx, AR_n1[i], AR_n2[i], AR_k1[i], AR_k2[i],
+                            cepx1, cepx2, cepx3,
+                            cepy1, cepy2, cepy3,
+                            cepz1, cepz2, cepz3,
+                            deltaxx, deltaxy, deltaxz,
+                            deltayx, deltayy, deltayz,
+                            deltazx, deltazy, deltazz,
+                            cxi11, cxi12, cxi13,
+                            cxi21, cxi22, cxi23,
+                            cxi31, cxi32, cxi33,
+                            cqz1, cqz2, cqz3, cqz4,
+                            cpz1, cpz2, cpz3,
+                            cpx1, cpx2,
+                            cpy1, cpy2,
+                            dt, theta_inc, wl);
+                        }
+                        break;
+                    }           
+                }
+            }
+
+
+            if(loop==0)
+            {
+                Dielectric_Coeff(0, thick, 0, je,
+                kx, index_in,
+                cepx1, cepx2, cepx3,
+                cepy1, cepy2, cepy3,
+                cepz1, cepz2, cepz3,
+                cxi11, cxi12, cxi13,
+                cxi21, cxi22, cxi23,
+                cxi31, cxi32, cxi33,
+                cqz1, cqz2, cqz3, cqz4,
+                cpz1, cpz2, cpz3,
+                cpx1, cpx2,
+                cpy1, cpy2);
+            }
+            
+            
+            PML_Left_Coeff(0, pml, 0, je,
+            Ppml_left1, Ppml_left2,
+            Qpml_left1, Qpml_left2,
+            index_in);
+
+            PML_Right_Coeff(0, pml, 0, je,
+            Ppml_right1, Ppml_right2,
+            Qpml_right1, Qpml_right2,
+            index_out);
+            
+            if(loop==1 && Option[1]==1)
+            {
+                //Store impermittivity tensor
+                if(Option[11]==1)
+                {
+                    sprintf(outdirectory, "./Result/Simulation_%d/Impermittivity", Run);
+                    mkdir(outdirectory, 0755);
+                    
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_xx.txt", Run);
+                    Store_comp_2D(outfile, cepx1, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_xy.txt", Run);
+                    Store_comp_2D(outfile, cepx2, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_xz.txt", Run);
+                    Store_comp_2D(outfile, cepx3, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_yx.txt", Run);
+                    Store_comp_2D(outfile, cepy1, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_yy.txt", Run);
+                    Store_comp_2D(outfile, cepy2, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_yz.txt", Run);
+                    Store_comp_2D(outfile, cepy3, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_zx.txt", Run);
+                    Store_comp_2D(outfile, cepz1, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_zy.txt", Run);
+                    Store_comp_2D(outfile, cepz2, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Eps_zz.txt", Run);
+                    Store_comp_2D(outfile, cepz3, thick, je);
+                    
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Ppml_left2.txt", Run);
+                    Store_double_2D(outfile, Ppml_left2, pml, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Qpml_left2.txt", Run);
+                    Store_double_2D(outfile, Qpml_left2, pml, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Ppml_right2.txt", Run);
+                    Store_double_2D(outfile, Ppml_right2, pml, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Impermittivity/Qpml_right2.txt", Run);
+                    Store_double_2D(outfile, Qpml_right2, pml, je);
+                    
+                }
+            }
+
+            
+            if(loop==1 && Option[2]==1)
+            {
+
+                if(Option[11]==1)
+                {
+                    sprintf(outdirectory, "./Result/Simulation_%d/Permittivity", Run);
+                    mkdir(outdirectory, 0755);
+                    
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_xx.txt", Run);
+                    Store_comp_2D(outfile, epx1, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_xy.txt", Run);
+                    Store_comp_2D(outfile, epx2, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_xz.txt", Run);
+                    Store_comp_2D(outfile, epx3, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_yx.txt", Run);
+                    Store_comp_2D(outfile, epy1, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_yy.txt", Run);
+                    Store_comp_2D(outfile, epy2, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_yz.txt", Run);
+                    Store_comp_2D(outfile, epy3, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_zx.txt", Run);
+                    Store_comp_2D(outfile, epz1, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_zy.txt", Run);
+                    Store_comp_2D(outfile, epz2, thick, je);
+                    sprintf(outfile, "./Result/Simulation_%d/Permittivity/Eps_zz.txt", Run);
+                    Store_comp_2D(outfile, epz3, thick, je);
+                }
+            }
+
+        /* Time Stepping */
+
+            //Store snap-shot of the near-field image at every 100's time-step
+            if(loop==1 && Option[9]==1)
+            {
+                if(Option[11]==1)
+                {
+                    sprintf(outdirectory, "./Result/Simulation_%d/Capture", Run);
+                    mkdir(outdirectory, 0755);
+                }
+            }
+            
+
+            //Start time-stepping
+            for (n=0;n<=nmax;n++)
+            {      
+                
+                if(loop==1 && n==0)
+                {
+                    printf("\nSimuation[%d] Starts\n", Run);
+                }
+                
+                
+                if(loop==1 && Option[9]==1)
+                {
+                    for(i=1;i<(int)((double)nmax/(double)Sample_Time)+1;i++)
+                    {
+                        if(n==i*Sample_Time)
+                        {
+                            if(Option[11]==1)
+                            {
+                                sprintf(outdirectory, "./Result/Simulation_%d/Capture/%d",Run,n);
+                                mkdir(outdirectory, 0755);
+                            }
+                        }
+                    }
+                }
+
+                
+                //Field-update on (n) time-step
+
+                //Source Excitation            
+                if(Sine==1)
+                {                           
+                    Source_TE1.r=cos(2*pi*S*(double)n/(double)N+0.25*pi);                
+                    Source_TE1.i=sin(2*pi*S*(double)n/(double)N+0.25*pi);
+
+                    Source_TM1.r=index_in*cos(2*pi*(S*(double)n+0.5*cos(theta_inc))/(double)N+0.25*pi);                
+                    Source_TM1.i=index_in*sin(2*pi*(S*(double)n+0.5*cos(theta_inc))/(double)N+0.25*pi);
+                    if(n<60)
+                    {                    
+                        Source_TE1.r=(1-exp(-pow((double)n/(double)20,3)))*cos(2*pi*S*(double)n/(double)N+0.25*pi);                    
+                        Source_TE1.i=(1-exp(-pow((double)n/(double)20,3)))*sin(2*pi*S*(double)n/(double)N+0.25*pi);  
+
+                        Source_TM1.r=index_in*(1-exp(-pow((double)n/(double)20,3)))*cos(2*pi*(S*(double)n+0.5*cos(theta_inc))/(double)N+0.25*pi);                    
+                        Source_TM1.i=index_in*(1-exp(-pow((double)n/(double)20,3)))*sin(2*pi*(S*(double)n+0.5*cos(theta_inc))/(double)N+0.25*pi);
+                    }
+                }
+                if(Gauss==1)
+                {                
+                    Source_TE1.r=exp(-pow((double)(n-Gauss_Delay)/(double)Gauss_Width,2)*2)*cos(2*pi*S*(double)n/(double)N+0.25*pi);
+                    Source_TE1.i=exp(-pow((double)(n-Gauss_Delay)/(double)Gauss_Width,2)*2)*sin(2*pi*S*(double)n/(double)N+0.25*pi);
+
+                    Source_TM1.r=index_in*exp(-pow((double)(n-Gauss_Delay)/(double)Gauss_Width,2)*2)*cos(2*pi*(S*(double)n+0.5/(double)cos(theta_inc))/(double)N+0.25*pi);
+                    Source_TM1.i=index_in*exp(-pow((double)(n-Gauss_Delay)/(double)Gauss_Width,2)*2)*sin(2*pi*(S*(double)n+0.5/(double)cos(theta_inc))/(double)N+0.25*pi);                
+
+                    if(n>2*Gauss_Delay)
+                    {
+                        Source_TE1.r=0;   Source_TE1.i=0;
+                        Source_TM1.r=0;   Source_TM1.i=0;
+                    }          
+                }
+
+                //Excite soft-source
+                for (x=0; x<je; x++)
+                {
+                    pya[source][x].r=pya[source][x].r
+                    +sin(psi)*Source_TE1.r-cos(psi)*tan(chi)*Source_TE1.i;
+                    pya[source][x].i=pya[source][x].i
+                    +sin(psi)*Source_TE1.i+cos(psi)*tan(chi)*Source_TE1.r;
+                }
+                for (x=0; x<jb; x++)
+                {    	
+                    qya[source][x].r=qya[source][x].r
+                    +cos(psi)*Source_TM1.r+sin(psi)*tan(chi)*Source_TM1.i;
+                    qya[source][x].i=qya[source][x].i
+                    +cos(psi)*Source_TM1.i-sin(psi)*tan(chi)*Source_TM1.r;
+                }
+
+
+                //Left PML Update
+                Left_PML_Pa_Field_Update(0, pml, 0, je,
+                pxa, pya, pyb, pza,
+                past_qx, past_qy, past_qz,
+                Ppml_left1, Ppml_left2,
+                index_in, S);  
+                //'a' field-update before the structure
+                Iso_Pa_Field_Update(pml, zleft, 0, je,
+                pxa, pya, pza,
+                past_qx, past_qy, past_qz,
+                index_in, S); 
+                Aniso_Pa_Field_Update(zleft, zright, 0, je,
+                pxa, pya, pza, 
+                past_pxa, past_pya, past_pza,
+                past_qx, past_qy, past_qz,
+                rxx, rxy, rxz,
+                ryx, ryy, ryz,
+                rzx, rzy, rzz,
+                cepx1, cepx2, cepx3,
+                cepy1, cepy2, cepy3,
+                cepz1, cepz2, cepz3,
+                deltaxx, deltaxy, deltaxz,
+                deltayx, deltayy, deltayz,
+                deltazx, deltazy, deltazz,
+                cxi11, cxi12, cxi13,
+                cxi21, cxi22, cxi23,
+                cxi31, cxi32, cxi33,
+                theta_inc, S); 
+                //'a' field-update beyond the structure
+                Iso_Pa_Field_Update(zright, ie-pml, 0, je,
+                pxa, pya, pza,
+                past_qx, past_qy, past_qz,
+                index_out, S);    
+                //Right PML Update
+                Right_PML_Pa_Field_Update(ie-pml, ie, 0, je,
+                pxa, pya, pyb, pza,
+                past_qx, past_qy, past_qz,
+                Ppml_right1, Ppml_right2,
+                index_out, S);
+                //PBC
+                PBC_2D(pxa, ie, je);
+
+
+                //Left PML Update
+                Left_PML_Qa_Field_Update(0, pml, 0, je,
+                qx, qya, qyb, qza,
+                past_px, past_py, past_pz,
+                Qpml_left1, Qpml_left2,
+                S);
+                //'a' field-update before the structure
+                Aniso_Qa_Field_Update(pml, ie-pml, 0, je,
+                qx, qya, qza,
+                past_px, past_py, past_pz,
+                S);
+                //Right PML Update
+                Right_PML_Qa_Field_Update(ie-pml, ie, 0, je,
+                qx, qya, qyb, qza,
+                past_px, past_py, past_pz,
+                Qpml_right1, Qpml_right2,
+                S);
+                //PBC
+                PBC_2D(qza, ie, je);
+                PBC_2D(qya, ie, je);
+                PBC_2D(qyb, ie, je);
+
+                //Total-Field Update before the structure            
+                Iso_Qz_Field_Update(0, zleft, 0, je, 
+                qz, qza,
+                pya, pyb,
+                index_in, kx);     
+                //Total-Field Update inside of the structure
+                Aniso_Qz_Field_Update(zleft, zright, 0, je, 
+                qz,
+                pza, pya, pyb,
+                qza, qya, qyb,
+                cqz1, cqz2, cqz3, cqz4);
+                //Total-Field Update beyond the structure
+                Iso_Qz_Field_Update(zright, ie, 0, je, 
+                qz, qza,
+                pya, pyb,
+                index_out, kx);
+                //PBC
+                PBC_2D(qz, ie, je);
+
+                //Total-Field Update before the structure
+                Iso_Pz_Field_Update(0, zleft, 0, je, 
+                pz, pza, 
+                qya, qyb,
+                index_in, kx);
+                //Total-Field Update inside of the structure
+                Aniso_Pz_Field_Update(zleft, zright, 0, je, 
+                pz,
+                pza, qz, qya, qyb,
+                cpz1, cpz2, cpz3);
+                //Total-Field Update beyond the structure
+                Iso_Pz_Field_Update(zright, ie, 0, je, 
+                pz, pza, 
+                qya, qyb,
+                index_out, kx);
+
+                //Total-Field Update before the structure
+                Iso_Qy_Field_Update(0, zleft, 0, je, 
+                qy, qya, qyb, 
+                pz,
+                kx);
+                //Total-Field Update inside of the structure
+                Aniso_Qy_Field_Update(zleft, zright, 0, je, 
+                qy, qya,  qyb,  
+                pz,
+                kx);
+                //Total-Field Update beyond the structure
+                Iso_Qy_Field_Update(zright, ie, 0, je, 
+                qy, qya, qyb, 
+                pz,
+                kx);
+                //PBC
+                PBC_2D(qy, ie, je);            
+
+                //Total-Field Update before the structure
+                Iso_Pxy_Field_Update(0, zleft, 0, je, 
+                px, py,
+                pxa, pya, pyb,
+                qz,
+                index_in, kx);
+                //Total-Field Update inside of the structure
+                Aniso_Pxy_Field_Update(zleft, zright, 0, je, 
+                px, py,
+                pxa, pya, pyb,
+                qz, qy,
+                cpx1, cpx2,
+                cpy1, cpy2);
+                //Total-Field Update beyond the structure
+                Iso_Pxy_Field_Update(zright, ie, 0, je, 
+                px, py,
+                pxa, pya, pyb,
+                qz,
+                index_out, kx);
+                //PBC
+                PBC_2D(px, ie, je);
+
+                //End of 1st time-grid
+
+                //(n+1/2) time-step start
+
+                //Source Excitation
+                if(Sine==1)
+                {                              
+                    Source_TE2.r=cos(2*pi*S*(double)(n+0.5)/(double)N+0.25*pi);                
+                    Source_TE2.i=sin(2*pi*S*(double)(n+0.5)/(double)N+0.25*pi);
+
+                    Source_TM2.r=index_in*cos(2*pi*(S*(double)(n+0.5)+0.5*cos(theta_inc))/(double)N+0.25*pi);                
+                    Source_TM2.i=index_in*sin(2*pi*(S*(double)(n+0.5)+0.5*cos(theta_inc))/(double)N+0.25*pi);
+
+                    if(n<60)
+                    {                    
+                        Source_TE2.r=(1-exp(-pow((double)(n+0.5)/(double)20,3)))*cos(2*pi*S*(double)(n+0.5)/(double)N+0.25*pi);                    
+                        Source_TE2.i=(1-exp(-pow((double)(n+0.5)/(double)20,3)))*sin(2*pi*S*(double)(n+0.5)/(double)N+0.25*pi);  
+
+                        Source_TM2.r=index_in*(1-exp(-pow((double)(n+0.5)/(double)20,3)))*cos(2*pi*(S*(double)(n+0.5)+0.5*cos(theta_inc))/(double)N+0.25*pi);                    
+                        Source_TM2.i=index_in*(1-exp(-pow((double)(n+0.5)/(double)20,3)))*sin(2*pi*(S*(double)(n+0.5)+0.5*cos(theta_inc))/(double)N+0.25*pi);
+                    }  
+                }
+                if(Gauss==1)
+                {                
+                    Source_TE2.r=exp(-pow((double)(n+0.5-Gauss_Delay)/(double)Gauss_Width,2)*2)*cos(2*pi*S*(double)(n+0.5)/(double)N+0.25*pi);
+                    Source_TE2.i=exp(-pow((double)(n+0.5-Gauss_Delay)/(double)Gauss_Width,2)*2)*sin(2*pi*S*(double)(n+0.5)/(double)N+0.25*pi);
+
+                    Source_TM2.r=index_in*exp(-pow((double)(n+0.5-Gauss_Delay)/(double)Gauss_Width,2)*2)*cos(2*pi*(S*(double)(n+0.5)+0.5/(double)cos(theta_inc))/(double)N+0.25*pi);
+                    Source_TM2.i=index_in*exp(-pow((double)(n+0.5-Gauss_Delay)/(double)Gauss_Width,2)*2)*sin(2*pi*(S*(double)(n+0.5)+0.5/(double)cos(theta_inc))/(double)N+0.25*pi);
+
+                    if(n>2*Gauss_Delay)
+                    {
+                        Source_TE2.r=0;   Source_TE2.i=0;
+                        Source_TM2.r=0;   Source_TM2.i=0;
+                    }   
+                }
+                //Excite a soft-source   
+                for (x=0; x<je; x++)
+                {
+                    past_pya[source][x].r=past_pya[source][x].r
+                    +sin(psi)*Source_TE2.r-cos(psi)*tan(chi)*Source_TE2.i;
+                    past_pya[source][x].i=past_pya[source][x].i
+                    +sin(psi)*Source_TE2.i+cos(psi)*tan(chi)*Source_TE2.r;
+                }
+                for (x=0; x<jb; x++)
+                {
+                    past_qya[source][x].r=past_qya[source][x].r
+                    +cos(psi)*Source_TM2.r+sin(psi)*tan(chi)*Source_TM2.i;
+                    past_qya[source][x].i=past_qya[source][x].i
+                    +cos(psi)*Source_TM2.i-sin(psi)*tan(chi)*Source_TM2.r;
+                }
+
+
+                //Left PML Update
+                Left_PML_Pa_Field_Update(0, pml, 0, je,
+                past_pxa, past_pya, past_pyb, past_pza,
+                qx, qy, qz,
+                Ppml_left1, Ppml_left2,
+                index_in, S); 
+                //'a' field-update before the structure
+                Iso_Pa_Field_Update(pml, zleft, 0, je,
+                past_pxa, past_pya, past_pza,
+                qx, qy, qz,
+                index_in, S); 
+                //'a' field-update inside of the structure
+                Aniso_Pa_Field_Update(zleft, zright, 0, je,
+                past_pxa, past_pya, past_pza, 
+                pxa, pya, pza,
+                qx, qy, qz,
+                rxx, rxy, rxz,
+                ryx, ryy, ryz,
+                rzx, rzy, rzz,
+                cepx1, cepx2, cepx3,
+                cepy1, cepy2, cepy3,
+                cepz1, cepz2, cepz3,
+                deltaxx, deltaxy, deltaxz,
+                deltayx, deltayy, deltayz,
+                deltazx, deltazy, deltazz,
+                cxi11, cxi12, cxi13,
+                cxi21, cxi22, cxi23,
+                cxi31, cxi32, cxi33,
+                theta_inc, S);  
+                //'a' field-update beyond the structure
+                Iso_Pa_Field_Update(zright, ie-pml, 0, je,
+                past_pxa, past_pya, past_pza,
+                qx, qy, qz,
+                index_out, S);  
+                //Right PML Update
+                Right_PML_Pa_Field_Update(ie-pml, ie, 0, je,
+                past_pxa, past_pya, past_pyb, past_pza,
+                qx, qy, qz,
+                Ppml_right1, Ppml_right2,
+                index_out, S);
+                //PBC
+                PBC_2D(past_pxa, ie, je);
+
+
+                //Left PML Update
+                Left_PML_Qa_Field_Update(0, pml, 0, je,
+                past_qx, past_qya, past_qyb, past_qza,
+                px, py, pz,
+                Qpml_left1, Qpml_left2,
+                S);
+                //'a' field-update before the structure
+                Aniso_Qa_Field_Update(pml, ie-pml, 0, je,
+                past_qx, past_qya, past_qza,
+                px, py, pz,
+                S);
+                //Right PML Update
+                Right_PML_Qa_Field_Update(ie-pml, ie, 0, je,
+                past_qx, past_qya, past_qyb, past_qza,
+                px, py, pz,
+                Qpml_right1, Qpml_right2,
+                S);
+                //PBC
+                PBC_2D(past_qza, ie, je);
+                PBC_2D(past_qya, ie, je);
+                PBC_2D(past_qyb, ie, je);
+
+                //Total-Field Update before the structure
+                Iso_Qz_Field_Update(0, zleft, 0, je, 
+                past_qz, past_qza,
+                past_pya, past_pyb,
+                index_in, kx);
+                //Total-Field Update inside of the structure
+                Aniso_Qz_Field_Update(zleft, zright, 0, je, 
+                past_qz,
+                past_pza, past_pya, past_pyb,
+                past_qza, past_qya, past_qyb,
+                cqz1, cqz2, cqz3, cqz4);
+                //Total-Field Update beyond the structure
+                Iso_Qz_Field_Update(zright, ie, 0, je, 
+                past_qz, past_qza,
+                past_pya, past_pyb,
+                index_out, kx);
+                //PBC
+                PBC_2D(past_qz, ie, je);
+
+                //Total-Field Update before the structure
+                Iso_Pz_Field_Update(0, zleft, 0, je, 
+                past_pz, past_pza, 
+                past_qya, past_qyb,
+                index_in, kx);     
+                //Total-Field Update inside of the structure
+                Aniso_Pz_Field_Update(zleft, zright, 0, je, 
+                past_pz,
+                past_pza, past_qz, past_qya, past_qyb,
+                cpz1, cpz2, cpz3);
+                //Total-Field Update beyond the structure
+                Iso_Pz_Field_Update(zright, ie, 0, je, 
+                past_pz, past_pza, 
+                past_qya, past_qyb,
+                index_out, kx);
+
+                //Total-Field Update before the structure
+                Iso_Qy_Field_Update(0, zleft, 0, je, 
+                past_qy, past_qya, past_qyb, 
+                past_pz,
+                kx);
+                //Total-Field Update inside of the structure
+                Aniso_Qy_Field_Update(zleft, zright, 0, je, 
+                past_qy, past_qya, past_qyb, 
+                past_pz,
+                kx);
+                //Total-Field Update beyond the structure
+                Iso_Qy_Field_Update(zright, ie, 0, je, 
+                past_qy, past_qya, past_qyb, 
+                past_pz,
+                kx);
+                //PBC
+                PBC_2D(past_qy, ie, je);            
+
+                //Total-Field Update before the structure
+                Iso_Pxy_Field_Update(0, zleft, 0, je, 
+                past_px, past_py,
+                past_pxa, past_pya, past_pyb,
+                past_qz,
+                index_in, kx);
+                //Total-Field Update inside of the structure
+                Aniso_Pxy_Field_Update(zleft, zright, 0, je, 
+                past_px, past_py,
+                past_pxa, past_pya, past_pyb,
+                past_qz, past_qy,
+                cpx1, cpx2,
+                cpy1, cpy2);
+                //Total-Field Update beyond the structure
+                Iso_Pxy_Field_Update(zright, ie, 0, je, 
+                past_px, past_py,
+                past_pxa, past_pya, past_pyb,
+                past_qz,
+                index_out, kx);
+                //PBC
+                PBC_2D(past_px, ie, je);
+
+                //End of 2nd time-grid         
+
+                //Save the average intensity on the sampling line
+                for(x=0;x<je;x++)
+                {
+                    Sample_Intensity[n]=Sample_Intensity[n]
+                    +(pow(px[sample_line][x].r,2)+pow(px[sample_line][x].i,2))/(double)(je)
+                    +(pow(py[sample_line][x].r,2)+pow(py[sample_line][x].i,2))/(double)(je)
+                    +(pow(pz[sample_line][x].r,2)+pow(pz[sample_line][x].i,2))/(double)(je);
+                }
+
+                if(loop==1)
+                {          
+
+
+                    //Test the intensity on the sampling line                
+#if 0
+                    for (i=1;i<(int)(0.1*nmax)+1;i++)
+                    {
+                        if (n==i*10)
+#else
+		    if (n%100 == 0) {
+#endif
+                        {
+                            Power_max=0;
+                            for(x=0;x<je;x++)
+                            {
+                                Power=
+                                pow(px[sample_line][x].r,2)+pow(px[sample_line][x].i,2)
+                                +pow(py[sample_line][x].r,2)+pow(py[sample_line][x].i,2)
+                                +pow(pz[sample_line][x].r,2)+pow(pz[sample_line][x].i,2);
+                                if(Power_max<Power)
+                                {
+                                    Power_max=Power;
+                                }
+                            }
+                            //Automatic termination of simulation for Sine-FDTD
+                            if(Sine==1 && n>2*(int)((double)ie/S*index_max) && Power_max>0.00001)
+                            {
+                                flag2=Energy_Conv(flag2,n,Sample_Intensity);
+
+                                if(flag2==1)
+                                {
+                                    nmax=n;
+                                    printf("\nSimulation[%d] ends at n=%d\n\n", Run, nmax);
+                                }
+                            }
+                            //Evaluate the duration of DFT sampling
+                            if(Gauss==1)// && n>0*2*Gauss_Delay)
+                            {
+                                if(Power_max>0.001 && flag1==0)
+                                {
+                                    nmin=n;
+                                    printf("\nDFT[%d] starts at n=%d\n", Run, nmin);
+                                    flag1=1;
+                                }
+                                if(Power_max<0.01 && flag1==1 && n>(nmin+5*N))
+                                {
+                                    nmax=n;
+                                    printf("\nDFT[%d] stops at n=%d\n\n", Run, nmax);
+                                }
+                            }
+                        }
+                    }
+#if 0
+                    //Print the maximum intensity on the sampling line
+                    for(i=1;i<(int)(0.01*nmax)+1;i++)
+                    {
+                        if(n==i*100)
+                        {
+                            printf("\nCurrent Time-Step=%d/%d\n",n,nmax);
+                            printf("Maximum Intensity=%lf\n",Power_max);                        
+                        }
+                    }
+#else
+                    //Print the maximum intensity on the sampling line
+                    if(n%100==0)
+                    {
+                        printf("\nCurrent Time-Step=%d/%d\n",n,nmax);
+                        printf("Maximum Intensity=%lf\n",Power_max);                        
+                    }
+#endif                    
+                    
+                    if(Option[9]==1)
+                    {
+#if 0
+                        for(i=1;i<(int)((double)nmax/(double)Sample_Time)+1;i++)
+                        {                        
+                            if(n==i*Sample_Time)
+#else
+			if (n % Sample_Time == 0) {
+#endif
+                            {
+                                
+                                //Convert P-Q fields to E-H fields
+                                E_Field_Conv(Ex, Ey, Ez, px, py, pz, ie, je, N, theta_inc);
+                                H_Field_Conv(Hx, Hy, Hz, qx, qy, qz, ie, je, N, theta_inc);
+                                    
+                                Cal_Intensity(Intensity,px,py,pz,ie,je);   
+                                
+                                if(Option[11]==1)
+                                {
+                                    //Store EH-fields at every Sample_Time
+                                    sprintf(outfile, "./Result/Simulation_%d/Capture/%d/Ex_%d.txt",Run,n,n);
+                                    Store_comp_2D(outfile, Ex, ie, je);
+                                    sprintf(outfile, "./Result/Simulation_%d/Capture/%d/Ey_%d.txt",Run,n,n);
+                                    Store_comp_2D(outfile, Ey, ie, je);
+                                    sprintf(outfile, "./Result/Simulation_%d/Capture/%d/Ez_%d.txt",Run,n,n);
+                                    Store_comp_2D(outfile, Ez, ie, je);
+                                    sprintf(outfile, "./Result/Simulation_%d/Capture/%d/Hx_%d.txt",Run,n,n);
+                                    Store_comp_2D(outfile, Hx, ie, je);
+                                    sprintf(outfile, "./Result/Simulation_%d/Capture/%d/Hy_%d.txt",Run,n,n);
+                                    Store_comp_2D(outfile, Hy, ie, je);
+                                    sprintf(outfile, "./Result/Simulation_%d/Capture/%d/Hz_%d.txt",Run,n,n);
+                                    Store_comp_2D(outfile, Hz, ie, je);
+                                    
+                                    sprintf(outfile, "./Result/Simulation_%d/Capture/%d/Intensity_%d.txt",Run,n,n);
+                                    Store_double_2D(outfile, Intensity, ie, je);
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+                //Apply Near-Far Field Transformation & DFT for Gaussian Pulse            
+                if(Gauss==1)
+                {       
+                    Init_comp_2D(Farfield_TE, frequency, (2*m+1));
+                    Init_comp_2D(Farfield_TM, frequency, (2*m+1));
+                    near_far(0, je, m, N, sample_line, theta_inc, sample_index, frequency, freque, Farfield_TE, Farfield_TM, px, py, pz);
+
+                    if(loop==0 && n<2*Gauss_Delay)
+                    {
+                        DFT(n, N, frequency, m, S, freque, DFT_TE, DFT_TM, Farfield_TE, Farfield_TM);
+                    }
+                    if(loop==1 && n>2*Gauss_Delay)
+                    {
+                        DFT(n, N, frequency, m, S, freque, DFT_TE, DFT_TM, Farfield_TE, Farfield_TM);
+                    }
+                }
+
+            }//End of Time-Step
+
+            
+            //Create "Far_Field" folder
+            if(loop==0)
+            {
+                if(Option[11]==1)
+                {
+                    sprintf(outdirectory, "./Result/Simulation_%d/Far_Field",Run);
+                    mkdir(outdirectory, 0755);
+                    sprintf(outdirectory, "./Result/Simulation_%d/Far_Field/Input",Run);
+                    mkdir(outdirectory, 0755);
+                }
+            }
+            
+            else if(loop==1)
+            {
+                if(Option[11]==1)
+                {
+                    sprintf(outdirectory, "./Result/Simulation_%d/Far_Field/Output",Run);
+                    mkdir(outdirectory, 0755);
+                }
+            }
+
+
+            //Post-analysis for Sine-FDTD
+            if(Sine==1)
+            {
+                //Apply the near-to-far field transformation
+                near_far(0, je, m, N, sample_line, theta_inc, sample_index, frequency, freque, Farfield_TE, Farfield_TM, px, py, pz);
+
+                if(loop==0)
+                {
+                    if(Option[4]==1)
+                    {
+                        if(Option[11]==1)
+                        {
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Input/TE_Input.txt", Run);
+                            Store_comp_2D_Line(outfile, Farfield_TE, 100, (2*m+1));
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Input/TM_Input.txt", Run);
+                            Store_comp_2D_Line(outfile, Farfield_TM, 100, (2*m+1));
+                        }
+                    }
+                    //Calculate the incident intensity at every frequency
+                    for(fre=0;fre<frequency;fre++)
+                    {
+                        for(i=-m;i<=m;i++)
+                        {
+                            Input_Intensity[fre][i+m]=sample_index*(
+                            pow(Farfield_TE[fre][i+m].r,2)+pow(Farfield_TE[fre][i+m].i,2)
+                            +pow(Farfield_TM[fre][i+m].r,2)+pow(Farfield_TM[fre][i+m].i,2));
+                        }
+                    }
+                    //Store the incident intensity
+                    if(Option[11]==1)
+                    {
+                        sprintf(outfile, "./Result/Simulation_%d/Far_Field/Input/Intensity.txt", Run);
+                        Store_double_2D_Line(outfile, Input_Intensity, 100, (2*m+1));
+                    }
+                    
+                    if(Option[5]==1)
+                    {
+                        //Calculate the normalized Stokes parameters
+                        Stokes(frequency, m,
+                        S0, S1, S2, S3,
+                        Farfield_TE, Farfield_TM);
+                        
+                        //Store the normalized Stokes parameters
+                        
+                        if(Option[11]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Far_Field/Input/Stokes", Run);
+                            mkdir(outdirectory, 0755);
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S0.txt", Run);
+                            Store_double_2D_Line(outfile, S0, 100, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S1.txt", Run);
+                            Store_double_2D_Line(outfile, S1, 100, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S2.txt", Run);
+                            Store_double_2D_Line(outfile, S2, 100, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S3.txt", Run);
+                            Store_double_2D_Line(outfile, S3, 100, (2*m+1));
+                        }
+                    }
+                }
+                else if(loop==1)
+                {
+                    if(Option[4]==1)
+                    {
+                        if(Option[11]==1)
+                        {
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/TE_Output.txt", Run);
+                            Store_comp_2D_Line(outfile, Farfield_TE, 100, (2*m+1));
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/TM_Output.txt", Run);
+                            Store_comp_2D_Line(outfile, Farfield_TM, 100, (2*m+1));
+                        }
+                    }
+                    //Calculate the ouput intensity at every frequency
+                    for(fre=0;fre<frequency;fre++)
+                    {
+                        for(i=-m;i<=m;i++)
+                        {
+                            Output_Intensity[fre][i+m]=sample_index*(
+                            pow(Farfield_TE[fre][i+m].r,2)+pow(Farfield_TE[fre][i+m].i,2)
+                            +pow(Farfield_TM[fre][i+m].r,2)+pow(Farfield_TM[fre][i+m].i,2));
+                        }
+                    }
+                    
+                    //Store the output intensity
+                    if(Option[11]==1)
+                    {
+                        sprintf(outfile, "./Result/Simulation_%d/Far_Field/Output/Intensity.txt",Run);
+                        Store_double_2D_Line(outfile, Output_Intensity, 100, (2*m+1));
+                    }                    
+
+                    //Calculate the efficiencies at every frequency
+                    for (fre=0;fre<frequency;fre++)
+                    {
+                        Power=0;
+                        for(i=-m;i<=m;i++)
+                        {
+                            Power=Power+Input_Intensity[fre][i+m];
+                        }
+                        for(i=-m;i<=m;i++)
+                        {
+                            if (Power!=0)
+                            {
+                                Efficiency[fre][i+m]=(double)(Output_Intensity[fre][i+m])/(double)Power;
+                            }
+                            else
+                            {
+                                Efficiency[fre][i+m]=0;
+                            }
+                        }
+                    }
+                    //Store the efficiencies
+                    if(Option[3]==1)
+                    {
+                        if(Option[11]==1)
+                        {
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Efficiency.txt",Run);
+                            Store_double_2D_Line(outfile, Efficiency, 100, (2*m+1));
+                        }
+                    }
+
+                    if(Option[5]==1)
+                    {
+                        //Calculate the normalized Stokes parameters
+                        Stokes(frequency, m,
+                        S0, S1, S2, S3,
+                        Farfield_TE, Farfield_TM);
+                        
+                        //Store the normalized Stokes parameters
+                        if(Option[11]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Far_Field/Output/Stokes", Run);
+                            mkdir(outdirectory, 0755);
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S0.txt", Run);
+                            Store_double_2D_Line(outfile, S0, 100, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S1.txt", Run);
+                            Store_double_2D_Line(outfile, S1, 100, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S2.txt", Run);
+                            Store_double_2D_Line(outfile, S2, 100, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S3.txt", Run);
+                            Store_double_2D_Line(outfile, S3, 100, (2*m+1));
+                        }
+                    }
+                }           
+            }
+
+            else if(Gauss==1)
+            {     
+                if (loop==0)
+                {
+                    if(Option[4]==1)
+                    {
+                        if(Option[11]==1)
+                        {
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Input/TE_Input.txt", Run);
+                            Store_comp_2D(outfile, DFT_TE, frequency, (2*m+1));
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Input/TM_Input.txt", Run);
+                            Store_comp_2D(outfile, DFT_TM, frequency, (2*m+1));
+                        }
+                    }
+
+                    //Calcualte the incident intensity at every frequency
+                    for(fre=0;fre<frequency;fre++)
+                    {
+                        for(i=-m;i<=m;i++)
+                        {
+                            Input_Intensity[fre][i+m]=
+                             pow(DFT_TE[fre][i+m].r,2)+pow(DFT_TE[fre][i+m].i,2)
+                            +pow(DFT_TM[fre][i+m].r,2)+pow(DFT_TM[fre][i+m].i,2);
+                        }
+                    }
+                    
+                    //Store the incident intensity
+                    if(Option[11]==1)
+                    {
+                        sprintf(outfile, "./Result/Simulation_%d/Far_Field/Input/Intensity.txt",Run);
+                        Store_double_2D(outfile, Input_Intensity, frequency, (2*m+1));
+                    }
+                    
+                    if(Option[5]==1)
+                    {
+                        //Calculate the normalized Stokes parameters
+                        Stokes(frequency, m,
+                        S0, S1, S2, S3,
+                        DFT_TE, DFT_TM);
+                                                
+                        //Store the normalized Stokes parameters
+                        if(Option[11]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Far_Field/Input/Stokes",Run);
+                            mkdir(outdirectory, 0755);
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S0",Run);
+                            Store_double_2D(outfile, S0, frequency, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S1",Run);
+                            Store_double_2D(outfile, S1, frequency, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S2",Run);
+                            Store_double_2D(outfile, S2, frequency, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Input/Stokes/S3",Run);
+                            Store_double_2D(outfile, S3, frequency, (2*m+1));
+                        }
+                    }
+                }
+                
+                else if (loop==1)
+                {
+                    if(Option[4]==1)
+                    {
+                        if(Option[11]==1)
+                        {
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Output/TE_Output.txt",Run);
+                            Store_comp_2D(outfile, DFT_TE, frequency, (2*m+1));
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Output/TM_Output.txt",Run);
+                            Store_comp_2D(outfile, DFT_TM, frequency, (2*m+1));
+                        }
+                    }
+
+                    //Calculate the output intensity at every frequency
+                    for(fre=0;fre<frequency;fre++)
+                    {
+                        for(i=-m;i<=m;i++)
+                        {
+                            Output_Intensity[fre][i+m]=
+                             pow(DFT_TE[fre][i+m].r,2)+pow(DFT_TE[fre][i+m].i,2)
+                            +pow(DFT_TM[fre][i+m].r,2)+pow(DFT_TM[fre][i+m].i,2);
+                        }
+                    }
+                    
+                    //Store the output intensity
+                    if(Option[11]==1)
+                    {
+                        sprintf(outfile, "./Result/Simulation_%d/Far_Field/Output/Intensity.txt",Run);
+                        Store_double_2D(outfile, Output_Intensity, frequency, (2*m+1));
+                    }
+
+                    //Calculate the efficiencies
+                    for (fre=0;fre<frequency;fre++)
+                    {
+                        Power=0;
+                        for(i=-m;i<=m;i++)
+                        {
+                            Power=Power+Input_Intensity[fre][i+m];
+                        }
+                        for(i=-m;i<=m;i++)
+                        {
+                            if (Power!=0)
+                            {
+                                Efficiency[fre][i+m]=(double)(Output_Intensity[fre][i+m])/(double)Power;
+                            }
+                            else
+                            {
+                                Efficiency[fre][i+m]=0;
+                            }
+                        }
+                    }
+                    //Store the efficiencies
+                    if(Option[3]==1)
+                    {
+                        if(Option[11]==1)
+                        {
+                            sprintf(outfile, "./Result/Simulation_%d/Far_Field/Efficiency.txt",Run);
+                            Store_double_2D(outfile, Efficiency, frequency, (2*m+1));
+                        }
+                    }
+
+                    if(Option[5]==1)
+                    {
+                        //Calculate the normalized Stokes parameters
+                        Stokes(frequency, m,
+                        S0, S1, S2, S3,
+                        DFT_TE, DFT_TM);
+                        
+                        //Store the normalized Stokes parameters
+                        if(Option[11]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Far_Field/Output/Stokes",Run);
+                            mkdir(outdirectory, 0755);
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S0.txt",Run);
+                            Store_double_2D(outfile, S0, frequency, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S1.txt",Run);
+                            Store_double_2D(outfile, S1, frequency, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S2.txt",Run);
+                            Store_double_2D(outfile, S2, frequency, (2*m+1));
+                            sprintf(outfile,"./Result/Simulation_%d/Far_Field/Output/Stokes/S3.txt",Run);
+                            Store_double_2D(outfile, S3, frequency, (2*m+1));
+                        }
+                    }
+                }
+            }
+            
+            //Convert P-Q fields to E-H fields
+            E_Field_Conv(Ex, Ey, Ez, px, py, pz, ie, je, N, theta_inc);
+            H_Field_Conv(Hx, Hy, Hz, qx, qy, qz, ie, je, N, theta_inc);
+            
+            
+            if(loop==0)
+            {
+                if(Option[11]==1)
+                {
+                    sprintf(outdirectory, "./Result/Simulation_%d/Near_Field",Run);
+                    mkdir(outdirectory, 0755);
+                    sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Input",Run);
+                    mkdir(outdirectory, 0755);
+                }
+            }
+            else if(loop==1)
+            {
+                if(Option[11]==1)
+                {
+                    sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Output",Run);
+                    mkdir(outdirectory, 0755);
+                }
+            }
+             
+            
+            
+            if(Option[6]==1 || Option[8]==1)
+            {
+                if(loop==0)
+                {
+                    if(Option[11]==1)
+                    {             
+                        if(Option[6]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Line",Run);
+                            mkdir(outdirectory, 0755);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Line/Ex_near.txt",Run);
+                            Store_comp_2D_Line(outfile, Ex, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Line/Ey_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Ey, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Line/Ez_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Ez, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Line/Hx_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Hx, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Line/Hy_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Hy, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Line/Hz_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Hz, sample_line, je);
+                        }
+                        if(Option[8]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Input/PQ_Field_Line",Run);
+                            mkdir(outdirectory, 0755);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/PQ_Field_Line/Px_near.txt",Run);
+                            Store_comp_2D_Line(outfile, px, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/PQ_Field_Line/Py_near.txt", Run);
+                            Store_comp_2D_Line(outfile, py, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/PQ_Field_Line/Pz_near.txt", Run);
+                            Store_comp_2D_Line(outfile, pz, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/PQ_Field_Line/Qx_near.txt", Run);
+                            Store_comp_2D_Line(outfile, qx, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/PQ_Field_Line/Qy_near.txt", Run);
+                            Store_comp_2D_Line(outfile, qy, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/PQ_Field_Line/Qz_near.txt", Run);
+                            Store_comp_2D_Line(outfile, qz, sample_line, je);
+                        }
+                    }
+                }
+                else if(loop==1)
+                {
+                    if(Option[11]==1)
+                    {
+                        if(Option[6]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Line",Run);
+                            mkdir(outdirectory, 0755);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Line/Ex_near.txt",Run);
+                            Store_comp_2D_Line(outfile, Ex, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Line/Ey_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Ey, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Line/Ez_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Ez, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Line/Hx_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Hx, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Line/Hy_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Hy, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Line/Hz_near.txt", Run);
+                            Store_comp_2D_Line(outfile, Hz, sample_line, je);
+                        }
+                        if(Option[8]==1)
+                        {
+                            sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Output/PQ_Field_Line",Run);
+                            mkdir(outdirectory, 0755);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/PQ_Field_Line/Px_near.txt",Run);
+                            Store_comp_2D_Line(outfile, px, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/PQ_Field_Line/Py_near.txt", Run);
+                            Store_comp_2D_Line(outfile, py, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/PQ_Field_Line/Pz_near.txt", Run);
+                            Store_comp_2D_Line(outfile, pz, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/PQ_Field_Line/Qx_near.txt", Run);
+                            Store_comp_2D_Line(outfile, qx, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/PQ_Field_Line/Qy_near.txt", Run);
+                            Store_comp_2D_Line(outfile, qy, sample_line, je);
+                            
+                            sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/PQ_Field_Line/Qz_near.txt", Run);
+                            Store_comp_2D_Line(outfile, qz, sample_line, je);
+                        }
+                    }                    
+                }
+            }
+
+            
+             
+            if(Option[7]==1)
+            {           
+                if(loop==0)
+                {
+                    if(Option[11]==1)
+                    {
+                        //Store E-H fields
+                        sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Map", Run);
+                        mkdir(outdirectory, 0755);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Map/Ex.txt", Run);
+                        Store_comp_2D(outfile, Ex, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Map/Ey.txt", Run);
+                        Store_comp_2D(outfile, Ey, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Map/Ez.txt", Run);
+                        Store_comp_2D(outfile, Ez, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Map/Hx.txt", Run);
+                        Store_comp_2D(outfile, Hx, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Map/Hy.txt", Run);
+                        Store_comp_2D(outfile, Hy, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/EM_Field_Map/Hz.txt", Run);
+                        Store_comp_2D(outfile, Hz, ie, je);
+                    }
+                }
+
+                if(loop==1)
+                {
+                    if(Option[11]==1)
+                    {
+                        //Store E-H fields
+                        sprintf(outdirectory, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Map", Run);
+                        mkdir(outdirectory, 0755);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Map/Ex.txt", Run);
+                        Store_comp_2D(outfile, Ex, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Map/Ey.txt", Run);
+                        Store_comp_2D(outfile, Ey, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Map/Ez.txt", Run);
+                        Store_comp_2D(outfile, Ez, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Map/Hx.txt", Run);
+                        Store_comp_2D(outfile, Hx, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Map/Hy.txt", Run);
+                        Store_comp_2D(outfile, Hy, ie, je);
+                        sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/EM_Field_Map/Hz.txt", Run);
+                        Store_comp_2D(outfile, Hz, ie, je);
+                    }
+                }
+            }
+
+            
+            //Store the average intensity on the sampling line
+            if(loop==0)
+            {
+                
+                //for the incident wave
+                if(Option[11]==1)
+                {
+                    sprintf(outfile, "./Result/Simulation_%d/Near_Field/Input/Sample_Intensity.txt", Run);
+                    Store_double_1D(outfile, Sample_Intensity, nmax);
+                }
+            }
+            if(loop==1)
+            {
+                //for the output
+                if(Option[11]==1)
+                {
+                    sprintf(outfile, "./Result/Simulation_%d/Near_Field/Output/Sample_Intensity.txt", Run);
+                    Store_double_1D(outfile, Sample_Intensity, nmax);
+                }
+            }
+
+        }//End of Loop
+
+
+        
+    
+    }
+    
+    /*Memory Free*/
+    
+    if(Run==NoS && loop==2)
+    {
+        
+        //Memory Free of P-field
+        //(n) time-step
+        free_complex_2D(px,ie,jb);  free_complex_2D(pxa,ie,jb);
+        free_complex_2D(py,ie,je);  free_complex_2D(pya,ie,je); free_complex_2D(pyb,ie,je);
+        free_complex_2D(pz,ib,je);  free_complex_2D(pza,ib,je);
+        //(n+1/2) time-step
+        free_complex_2D(past_px,ie,jb); free_complex_2D(past_pxa,ie,jb);
+        free_complex_2D(past_py,ie,je); free_complex_2D(past_pya,ie,je);    free_complex_2D(past_pyb,ie,je);
+        free_complex_2D(past_pz,ib,je); free_complex_2D(past_pza,ib,je);
+        
+        //Memory Free of Q-field
+        //(n) time-step
+        free_complex_2D(qx,ib,je);
+        free_complex_2D(qy,ib,jb);  free_complex_2D(qya,ib,jb); free_complex_2D(qyb,ib,jb);
+        free_complex_2D(qz,ie,jb);  free_complex_2D(qza,ie,jb);
+        //(n+1/2) time-step
+        free_complex_2D(past_qx,ib,je);
+        free_complex_2D(past_qy,ib,jb);  free_complex_2D(past_qya,ib,jb); free_complex_2D(past_qyb,ib,jb);
+        free_complex_2D(past_qz,ie,jb);  free_complex_2D(past_qza,ie,jb);
+        
+        //Memory Free of E-field
+        free_complex_2D(Ex,ie,je);  free_complex_2D(Ey,ie,je);  free_complex_2D(Ez,ie,je);
+        
+        //Memory Free of H-field
+        free_complex_2D(Hx,ie,je);  free_complex_2D(Hy,ie,je);  free_complex_2D(Hz,ie,je);
+        
+        free_double_2D(Intensity,ie,je);
+        
+        //Memory Free of Variables for Near-Far Transformation
+        free_complex_2D(Farfield_TE,frequency,(2*m+1));     //TE mode
+        free_complex_2D(Farfield_TM,frequency,(2*m+1));     //TM mode
+        
+        //Memory Free of Variables for DFT
+        free_complex_2D(DFT_TE,frequency,(2*m+1));          //TE mode
+        free_complex_2D(DFT_TM,frequency,(2*m+1));          //TM mode
+        
+        //Memory Free of Source_Test
+        free(Sample_Intensity);
+        
+        //Memory Free of Stokes Parameters
+        free_double_2D(S0,frequency,(2*m+1));
+        free_double_2D(S1,frequency,(2*m+1));
+        free_double_2D(S2,frequency,(2*m+1));
+        free_double_2D(S3,frequency,(2*m+1));
+        
+        //Memory Free of Coefficient for Impermittivity
+        free_complex_2D(cepx1,thick,je); free_complex_2D(cepx2,thick,je); free_complex_2D(cepx3,thick,je);
+        free_complex_2D(cepy1,thick,je); free_complex_2D(cepy2,thick,je); free_complex_2D(cepy3,thick,je);
+        free_complex_2D(cepz1,thick,je); free_complex_2D(cepz2,thick,je); free_complex_2D(cepz3,thick,je);
+        
+        //Memory Free of Conductivity
+        free_double_2D(condx,thick,je);free_double_2D(condy,thick,je);free_double_2D(condz,thick,je);
+        
+        //Memory Free of Coefficients for Total-Field Update
+        free_complex_2D(cqz1,thick,je);  free_complex_2D(cqz2,thick,je);
+        free_complex_2D(cqz3,thick,je);  free_complex_2D(cqz4,thick,je);
+        
+        free_complex_2D(cpz1,thick,je);  free_complex_2D(cpz2,thick,je);  free_complex_2D(cpz3,thick,je);
+        
+        free_complex_2D(cpx1,thick,je);  free_complex_2D(cpx2,thick,je);
+        
+        free_complex_2D(cpy1,thick,je);  free_complex_2D(cpy2,thick,je);
+        
+        
+        //Memory Free of Coefficients for PML Field Update
+        free_double_2D(Ppml_left1,pml,je);  free_double_2D(Ppml_left2,pml,je);
+        free_double_2D(Ppml_right1,pml,je); free_double_2D(Ppml_right2,pml,je);
+        
+        free_double_2D(Qpml_left1,pml,je);  free_double_2D(Qpml_left2,pml,je);
+        free_double_2D(Qpml_right1,pml,je); free_double_2D(Qpml_right2,pml,je);
+        
+        if(Option[2]==1)
+        {
+            //Memory Free of Coefficient for Impermittivity
+            free_complex_2D(epx1,thick,je); free_complex_2D(epx2,thick,je); free_complex_2D(epx3,thick,je);
+            free_complex_2D(epy1,thick,je); free_complex_2D(epy2,thick,je); free_complex_2D(epy3,thick,je);
+            free_complex_2D(epz1,thick,je); free_complex_2D(epz2,thick,je); free_complex_2D(epz3,thick,je);
+        }
+        
+        //Memory Free of Variables for DFT
+        
+        free_double_2D(Efficiency,frequency,(2*m+1));
+        free_double_2D(Input_Intensity,frequency,(2*m+1));
+        free_double_2D(Output_Intensity,frequency,(2*m+1));
+        
+        
+        //Memory Free of Input Parameters
+        free(Type);
+        free(thickness);
+        free(no);
+        free(dn);
+        free(nc);
+        
+        free(sigma);free(sigmax);free(sigmay);free(sigmaz);
+        
+        for(i=0;i<Layers;i++)
+        {
+            if(Type[i]==10)
+            {
+                free_double_2D(n1,right[i]-left[i],je);
+                free_double_2D(n2,right[i]-left[i],je);
+                free_double_2D(n3,right[i]-left[i],je);
+                free_double_2D(k1,right[i]-left[i],je);
+                free_double_2D(k2,right[i]-left[i],je);
+                free_double_2D(k3,right[i]-left[i],je);
+                free_double_2D(alpha,right[i]-left[i],je);
+                free_double_2D(beta,right[i]-left[i],je);
+                free_double_2D(gamma,right[i]-left[i],je);
+            }
+        }
+        free(polar);
+        free(azimuth);
+        free(twist);
+        free(AR_n1);
+        free(AR_n2);
+        
+        free(ff);
+        
+        free(Iteration);
+        free(OutputOption);
+        
+        //Memory Free of Dimension Parameters
+        free(left);
+        free(right);
+        
+        //Memory Free of Frequency Variable
+        free(freque);
+        
+    }
+    /*
+    //Record the current time (simulation end)
+    final_time = time(0);    
+    fprintf(fp, "\n%10s:%s\n","Final Time",asctime(localtime(&final_time)));    
+    fclose(fp);
+    */
+    for(i=0;i<12;i++)
+    {
+        Data[i]=Option[i];
+    }
+    if(Data[9]==1)
+    {
+        Data[12]=(int)((double)nmax/(double)Sample_Time);
+        Data[13]=Sample_Time;
+    }
+    Data[14]=NoS;
+    
+    sprintf(outfile,"./Result/Output_Options.txt");
+    Store_int_1D(outfile,Data,15);
+    
+    return 0;        
+}   //End of main()

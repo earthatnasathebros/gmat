@@ -1,0 +1,24 @@
+//////gyro////////////
+diemention A (20,20),AK,(20), X(20)
+write(:
+	and intialise 
+n = 20 	= ///////////////// to raymomds number///////
+EPS=1.e-5
+ICNTR=0
+DO 10 I=1N
+AK[I]=0.0
+X.(I)=0.0 
+DO 105=I,N
+10.A	(IJ)= 0.0
+
+RETURN 
+
+X,Y,Z; "cubeSAT" (=i=1,2,3,4.)
+recevier slover.magent.uno for : ux uy uz 
+			  CR= clock bits
+	TO SOLVE f (e)=-2* sin (e) -:5
+		   g (e) =5+2* sin (e)
+	READ (5.3) X
+	Y=f (X) 
+WRITE
+  
